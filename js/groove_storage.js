@@ -18,6 +18,9 @@ if (typeof(grooveStorage) === "undefined")
 	var lastSavedGroove = null;
 	var serverAvailable = true;
 
+	// Tracks which saved groove is currently loaded (null if new/unsaved)
+	var currentGrooveRef = null; // { category: "Saved", id: "groove_123" }
+
 	// ── Server API ──────────────────────────────────────────────
 
 	root.fetchFromServer = function (callback) {
@@ -88,10 +91,36 @@ if (typeof(grooveStorage) === "undefined")
 			createdAt: Date.now()
 		};
 
+		currentGrooveRef = { category: category, id: id };
+
 		var commitMsg = 'groove: save "' + name + '" in ' + category;
 		root.saveToServer(commitMsg, function (err) {
 			if (err) {
 				console.error("Failed to save groove to server:", err);
+			}
+			if (callback) callback(err);
+		});
+	};
+
+	root.updateGroove = function (grooveQueryString, callback) {
+		if (!currentGrooveRef) {
+			if (callback) callback(new Error("No groove loaded to update"));
+			return;
+		}
+		var cat = currentGrooveRef.category;
+		var id = currentGrooveRef.id;
+		if (!cachedData || !cachedData.categories[cat] || !cachedData.categories[cat][id]) {
+			if (callback) callback(new Error("Groove reference is stale"));
+			return;
+		}
+
+		var name = cachedData.categories[cat][id].name;
+		cachedData.categories[cat][id].groove = grooveQueryString;
+
+		var commitMsg = 'groove: update "' + name + '" in ' + cat;
+		root.saveToServer(commitMsg, function (err) {
+			if (err) {
+				console.error("Failed to update groove on server:", err);
 			}
 			if (callback) callback(err);
 		});
@@ -105,6 +134,11 @@ if (typeof(grooveStorage) === "undefined")
 
 		var name = cachedData.categories[category][grooveId].name;
 		delete cachedData.categories[category][grooveId];
+
+		// Clear ref if we just deleted the currently loaded groove
+		if (currentGrooveRef && currentGrooveRef.category === category && currentGrooveRef.id === grooveId) {
+			currentGrooveRef = null;
+		}
 
 		// Remove empty categories
 		if (Object.keys(cachedData.categories[category]).length === 0) {
@@ -122,6 +156,18 @@ if (typeof(grooveStorage) === "undefined")
 
 	root.getCachedData = function () {
 		return cachedData;
+	};
+
+	root.setCurrentGrooveRef = function (category, id) {
+		currentGrooveRef = { category: category, id: id };
+	};
+
+	root.clearCurrentGrooveRef = function () {
+		currentGrooveRef = null;
+	};
+
+	root.getCurrentGrooveRef = function () {
+		return currentGrooveRef;
 	};
 
 	// ── localStorage auto-save ──────────────────────────────────
@@ -200,7 +246,7 @@ if (typeof(grooveStorage) === "undefined")
 				var gid = grooveIds[gi];
 				var groove = groovesInCat[gid];
 				HTML += '<li class="grooveListLI savedGrooveLI">';
-				HTML += '<span class="savedGrooveName" onclick="myGrooveWriter.loadSavedGroove(\'' + escapeJS(groove.groove) + '\')">';
+				HTML += '<span class="savedGrooveName" onclick="myGrooveWriter.loadSavedGroove(\'' + escapeJS(catName) + '\', \'' + escapeJS(gid) + '\', \'' + escapeJS(groove.groove) + '\')">';
 				HTML += escapeHTML(groove.name);
 				HTML += '</span>';
 				HTML += '<span class="savedGrooveDelete" onclick="event.stopPropagation(); myGrooveWriter.deleteSavedGroove(\'' + escapeJS(catName) + '\', \'' + escapeJS(gid) + '\');">';

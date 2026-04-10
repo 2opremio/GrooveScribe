@@ -4100,6 +4100,7 @@ function GrooveWriter() {
 
 	root.loadNewGroove = function (encodedURLData) {
 		set_Default_notes(encodedURLData);
+		grooveStorage.clearCurrentGrooveRef();
 	};
 
 	function getABCDataWithLineEndings() {
@@ -4697,8 +4698,9 @@ function GrooveWriter() {
 		});
 	};
 
-	root.loadSavedGroove = function (grooveQueryString) {
+	root.loadSavedGroove = function (category, grooveId, grooveQueryString) {
 		set_Default_notes(grooveQueryString);
+		grooveStorage.setCurrentGrooveRef(category, grooveId);
 		grooveStorage.setLastSaved(grooveQueryString);
 		grooveStorage.autosave(grooveQueryString);
 		root.updateSaveDirtyState(grooveQueryString);
@@ -4715,6 +4717,26 @@ function GrooveWriter() {
 	};
 
 	root.showSaveGrooveDialog = function () {
+		var fullURL = get_FullURLForPage();
+		var queryIndex = fullURL.indexOf("?");
+		var queryString = queryIndex !== -1 ? fullURL.substring(queryIndex) : fullURL;
+
+		// If a saved groove is loaded, update it in place — no dialog needed
+		var ref = grooveStorage.getCurrentGrooveRef();
+		if (ref) {
+			grooveStorage.updateGroove(queryString, function (err) {
+				if (err) {
+					alert("Failed to update groove: " + err.message);
+					return;
+				}
+				grooveStorage.setLastSaved(queryString);
+				root.updateSaveDirtyState(queryString);
+				root.refreshGrooveList();
+			});
+			return;
+		}
+
+		// New groove — show the save dialog
 		var popup = document.getElementById("saveGroovePopup");
 		if (!popup) return;
 
