@@ -1213,6 +1213,116 @@
 		font-size: 20px;
 		margin-top: 11px;
 	}
+	/* ── Save Groove Dialog ─────────────────────────────────── */
+	#saveGroovePopup {
+		position: absolute; left: 300px; top: 250px; z-index: 999;
+		background-color: #FFF;
+		width: 400px;
+		padding: 10px;
+		border: solid 2px #999;
+		border-radius: 5px;
+	}
+	#saveGroovePopupTitle {
+		text-align: center;
+		margin-top: 8px;
+		margin-bottom: 20px;
+		font-size: 18px;
+		font-weight: bold;
+	}
+	#saveGroovePopupFields label {
+		display: block;
+		margin-top: 10px;
+		margin-bottom: 4px;
+		font-size: 14px;
+		color: #666;
+	}
+	#saveGroovePopupFields input[type="text"] {
+		width: 100%;
+		box-sizing: border-box;
+		padding: 8px;
+		font-size: 16px;
+		border: 1px solid #CCC;
+		border-radius: 4px;
+	}
+	#saveGrooveCategorySuggestions {
+		margin-top: 6px;
+	}
+	.saveGrooveCategoryChip {
+		display: inline-block;
+		padding: 4px 10px;
+		margin: 2px 4px 2px 0;
+		background: #EEE;
+		border-radius: 12px;
+		font-size: 13px;
+		cursor: pointer;
+	}
+	.saveGrooveCategoryChip:hover {
+		background: #DDD;
+	}
+	#saveGroovePopupButtons {
+		margin-top: 20px;
+		text-align: center;
+	}
+	#saveGrooveCancel {
+		font-size: 16px;
+		font-weight: 500;
+		background: #FFF;
+		color: #CCC;
+		border: 0px;
+		border-radius: 5px;
+		padding: 5px 10px;
+		cursor: pointer;
+	}
+	#saveGrooveOK {
+		font-size: 16px;
+		font-weight: 500;
+		background: var(--highlight-color);
+		color: #FFF;
+		border: 0px;
+		border-radius: 5px;
+		padding: 5px 10px;
+		cursor: pointer;
+	}
+
+	/* ── Save button dirty state indicator ─────────────────── */
+	#saveGrooveButton.saveGrooveDirty #saveGrooveIcon {
+		color: var(--highlight-color);
+	}
+	#saveGrooveButton.saveGrooveDirty::after {
+		content: "";
+		display: block;
+		width: 8px;
+		height: 8px;
+		background: var(--highlight-color);
+		border-radius: 50%;
+		position: absolute;
+		top: 2px;
+		right: 2px;
+	}
+	#saveGrooveButton {
+		position: relative;
+	}
+
+	/* ── Saved groove list items ───────────────────────────── */
+	.savedGrooveLI {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+	.savedGrooveName {
+		cursor: pointer;
+		flex: 1;
+	}
+	.savedGrooveDelete {
+		cursor: pointer;
+		color: #999;
+		padding: 0 4px;
+		margin-left: 8px;
+	}
+	.savedGrooveDelete:hover {
+		color: #C00;
+	}
+
 	@media print {
 		/* keep at bottom so it overrides the styles above */
 		/* there is another definition in groove_display.css that adds more rules */

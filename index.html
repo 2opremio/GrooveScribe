@@ -58,6 +58,7 @@
 		<script src="js/groove_writer.js"></script>
 		<script src="js/groove_utils.js"></script>
 		<script src="js/grooves.js"></script>
+		<script src="js/groove_storage.js"></script>
 
 		<script type="text/javascript">
 			/*jslint browser:true evil:true on:true */
@@ -179,7 +180,8 @@
 					<span class=" grooveDB_hidden pageBottomButton" id="stickingsButton" onclick="myGrooveWriter.stickingsAnchorClick();"><span class="bottomButtonLabel">STICKINGS</span></span>
 					<span class=" grooveDB_hidden pageBottomButton" id="downloadButton" onclick="myGrooveWriter.DownloadAnchorClick();"><span class="bottomButtonIcon"><i class="fa fa-download fa-2x"></i></span><span class="bottomButtonLabel">DOWNLOAD</span></span>
 					<span class=" grooveDB_hidden pageBottomButton" id="printButton" onclick="myGrooveWriter.printMusic();"><span class="bottomButtonIcon"><i class="fa fa-print fa-2x"></i></span><span class="bottomButtonLabel">PRINT</span></span>
-					<span class=" grooveDB_hidden pageBottomButton" id="shareSaveButton" onclick="event.preventDefault(); myGrooveWriter.show_FullURLPopup();"><span class="bottomButtonIcon"><i class="fa fa-share fa-2x"></i></span><span class="bottomButtonLabel">SHARE</span></span>
+					<span class=" grooveDB_hidden pageBottomButton" id="saveGrooveButton" onclick="event.preventDefault(); myGrooveWriter.showSaveGrooveDialog();"><span class="bottomButtonIcon"><i class="fa fa-floppy-o fa-2x" id="saveGrooveIcon"></i></span><span class="bottomButtonLabel">SAVE</span></span>
+				<span class=" grooveDB_hidden pageBottomButton" id="shareSaveButton" onclick="event.preventDefault(); myGrooveWriter.show_FullURLPopup();"><span class="bottomButtonIcon"><i class="fa fa-share fa-2x"></i></span><span class="bottomButtonLabel">SHARE</span></span>
 				</div>
 
 				<div id="midiTextOutput">
@@ -399,9 +401,22 @@
 			</ul>
 		</div>
 		<div id="grooveListWrapper">
-			<script>
-				document.write(grooves.getGroovesAsHTML());
-			</script>
+		</div>
+
+		<!-- Save Groove dialog, hidden by default -->
+		<div id="saveGroovePopup" style="display:none;">
+			<div id="saveGroovePopupTitle">Save Groove</div>
+			<div id="saveGroovePopupFields">
+				<label for="saveGrooveName">Name</label>
+				<input type="text" id="saveGrooveName" placeholder="Groove name">
+				<label for="saveGrooveCategory">Category</label>
+				<input type="text" id="saveGrooveCategory" value="Saved" placeholder="Category">
+				<div id="saveGrooveCategorySuggestions"></div>
+			</div>
+			<div id="saveGroovePopupButtons">
+				<button id="saveGrooveCancel" onclick="myGrooveWriter.closeSaveGrooveDialog();">Cancel</button>
+				<button id="saveGrooveOK" onclick="myGrooveWriter.doSaveGroove();">Save</button>
+			</div>
 		</div>
 
 		<!-- dialog for the TIME label, hidden by default -->
