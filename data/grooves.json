@@ -1,13 +1,1 @@
-{
-  "version": 1,
-  "categories": {
-    "Saved": {
-      "groove_123": {
-        "name": "Test",
-        "groove": "?TimeSig=4/4&Div=8",
-        "createdAt": 123
-      }
-    }
-  },
-  "_commitMessage": "test save"
-}
+{"version":1,"categories":{}}
