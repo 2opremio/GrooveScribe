@@ -1,1 +1,12 @@
-{"version":1,"categories":{}}
+{
+  "version": 1,
+  "categories": {
+    "Saved": {
+      "groove_123": {
+        "name": "Test",
+        "groove": "?TimeSig=4/4&Div=8",
+        "createdAt": 123
+      }
+    }
+  }
+}
