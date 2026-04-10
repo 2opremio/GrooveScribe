@@ -8,8 +8,9 @@ set -e
 
 REMOTE=fons@autoamp
 REMOTE_DIR=GrooveScribe
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-GS_DIR="$SCRIPT_DIR"
+# Resolve symlinks so this works when called via a symlink from another repo
+REAL_SCRIPT="$(readlink -f "$0" 2>/dev/null || python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$0")"
+GS_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
@@ -44,7 +45,7 @@ else
         "$GS_DIR/" "$REMOTE:$REMOTE_DIR/"
 fi
 
-# --- Step 2: Supervisor config ---
+# --- Step 2: Supervisor config + restart ---
 echo ""
 echo "🔄 Step 2: Updating supervisor configuration..."
 scp -q "$GS_DIR/supervisor/groovescribe.conf" "$REMOTE:/tmp/groovescribe.conf"
@@ -53,31 +54,6 @@ ssh -A "$REMOTE" "sudo mv /tmp/groovescribe.conf /etc/supervisor/conf.d/groovesc
     sudo supervisorctl update && \
     sudo supervisorctl restart groovescribe"
 echo "   ✅ Supervisor updated, groovescribe restarted"
-
-# --- Step 3: Caddy config ---
-echo ""
-echo "🔄 Step 3: Updating Caddy configuration..."
-AUTOAMP_DIR="$(cd "$GS_DIR/../autoamp" 2>/dev/null && pwd || cd "$GS_DIR/../../autoamp" 2>/dev/null && pwd || echo "")"
-if [[ -n "$AUTOAMP_DIR" && -f "$AUTOAMP_DIR/caddy/Caddyfile" ]]; then
-    scp -q "$AUTOAMP_DIR/caddy/Caddyfile" "$REMOTE:/tmp/Caddyfile"
-    ssh -A "$REMOTE" "sudo mv /tmp/Caddyfile /etc/caddy/Caddyfile && \
-        sudo systemctl reload caddy"
-    echo "   ✅ Caddy reloaded"
-else
-    echo "   ⚠️  autoamp repo not found — skipping Caddy config update"
-    echo "   Update Caddyfile manually if needed"
-fi
-
-# --- Step 4: Backup script ---
-echo ""
-echo "📋 Step 4: Updating backup script..."
-if [[ -n "$AUTOAMP_DIR" && -f "$AUTOAMP_DIR/backup/backup.sh" ]]; then
-    scp -q "$AUTOAMP_DIR/backup/backup.sh" "$REMOTE:/tmp/backup.sh"
-    ssh -A "$REMOTE" "mv /tmp/backup.sh ~/backup.sh && chmod +x ~/backup.sh"
-    echo "   ✅ Backup script updated"
-else
-    echo "   ⚠️  autoamp repo not found — skipping backup script update"
-fi
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
