@@ -2780,6 +2780,14 @@ function GrooveWriter() {
 				searchDataEle.innerHTML = '<p style="margin-left: 10px;"><b>' + searchURL + '</b><p>';
 			}
 		}
+
+		// Auto-save to localStorage and update dirty state indicator
+		var queryIndex = newURL.indexOf("?");
+		if (queryIndex !== -1) {
+			var queryString = newURL.substring(queryIndex);
+			grooveStorage.autosave(queryString);
+			root.updateSaveDirtyState(queryString);
+		}
 	};
 
 	function generate_ABC(renderWidth) {
@@ -4654,5 +4662,130 @@ function GrooveWriter() {
 		newHTML += '</span>\n';
 		return newHTML;
 	};
+
+	// ── Groove Storage ──────────────────────────────────────────
+
+	root.updateSaveDirtyState = function (currentQueryString) {
+		var icon = document.getElementById("saveGrooveIcon");
+		if (!icon) return;
+		var btn = document.getElementById("saveGrooveButton");
+		if (grooveStorage.isDirty(currentQueryString)) {
+			btn.classList.add("saveGrooveDirty");
+		} else {
+			btn.classList.remove("saveGrooveDirty");
+		}
+	};
+
+	root.refreshGrooveList = function () {
+		var wrapper = document.getElementById("grooveListWrapper");
+		if (wrapper) {
+			wrapper.innerHTML = grooveStorage.getUserGroovesAsHTML() + grooves.getGroovesAsHTML();
+		}
+	};
+
+	root.initGrooveStorage = function () {
+		grooveStorage.fetchFromServer(function () {
+			root.refreshGrooveList();
+
+			// Check for autosaved work from a previous session
+			var autosaved = grooveStorage.getAutosave();
+			var currentQuery = window.location.search;
+			if (autosaved && autosaved !== currentQuery && autosaved.length > 1) {
+				// Restore autosaved state — the user had unsaved work
+				set_Default_notes(autosaved);
+			}
+		});
+	};
+
+	root.loadSavedGroove = function (grooveQueryString) {
+		set_Default_notes(grooveQueryString);
+		grooveStorage.setLastSaved(grooveQueryString);
+		grooveStorage.autosave(grooveQueryString);
+		root.updateSaveDirtyState(grooveQueryString);
+	};
+
+	root.deleteSavedGroove = function (category, grooveId) {
+		grooveStorage.deleteGroove(category, grooveId, function (err) {
+			if (err) {
+				alert("Failed to delete groove: " + err.message);
+				return;
+			}
+			root.refreshGrooveList();
+		});
+	};
+
+	root.showSaveGrooveDialog = function () {
+		var popup = document.getElementById("saveGroovePopup");
+		if (!popup) return;
+
+		// Pre-populate name from current title
+		var titleEle = document.getElementById("tuneTitle");
+		var nameInput = document.getElementById("saveGrooveName");
+		nameInput.value = (titleEle && titleEle.value.trim()) ? titleEle.value.trim() : "";
+
+		// Pre-populate category with "Saved"
+		var catInput = document.getElementById("saveGrooveCategory");
+		catInput.value = "Saved";
+
+		// Show existing category suggestions
+		var suggestionsDiv = document.getElementById("saveGrooveCategorySuggestions");
+		suggestionsDiv.innerHTML = "";
+		var data = grooveStorage.getCachedData();
+		if (data && data.categories) {
+			var cats = Object.keys(data.categories);
+			for (var i = 0; i < cats.length; i++) {
+				var chip = document.createElement("span");
+				chip.className = "saveGrooveCategoryChip";
+				chip.textContent = cats[i];
+				chip.onclick = (function (catName) {
+					return function () { catInput.value = catName; };
+				})(cats[i]);
+				suggestionsDiv.appendChild(chip);
+			}
+		}
+
+		popup.style.display = "block";
+		nameInput.focus();
+	};
+
+	root.closeSaveGrooveDialog = function () {
+		var popup = document.getElementById("saveGroovePopup");
+		if (popup) popup.style.display = "none";
+	};
+
+	root.doSaveGroove = function () {
+		var nameInput = document.getElementById("saveGrooveName");
+		var catInput = document.getElementById("saveGrooveCategory");
+		var name = nameInput.value.trim();
+		var category = catInput.value.trim() || "Saved";
+
+		if (!name) {
+			nameInput.focus();
+			return;
+		}
+
+		var fullURL = get_FullURLForPage();
+		var queryIndex = fullURL.indexOf("?");
+		var queryString = queryIndex !== -1 ? fullURL.substring(queryIndex) : fullURL;
+
+		grooveStorage.addGroove(category, name, queryString, function (err) {
+			if (err) {
+				alert("Failed to save groove: " + err.message);
+				return;
+			}
+			grooveStorage.setLastSaved(queryString);
+			root.updateSaveDirtyState(queryString);
+			root.refreshGrooveList();
+			root.closeSaveGrooveDialog();
+		});
+	};
+
+	// Initialize groove storage after DOM is ready
+	if (document.readyState === "loading") {
+		document.addEventListener("DOMContentLoaded", function () { root.initGrooveStorage(); });
+	} else {
+		// DOM already loaded (script at bottom of page)
+		setTimeout(function () { root.initGrooveStorage(); }, 0);
+	}
 
 } // end of class

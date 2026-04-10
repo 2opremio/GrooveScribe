@@ -12,3 +12,6 @@ cordova/plugins/
 # Node.js
 node_modules/
 
+# Deploy key (private key only — .pub is committed)
+credentials/deploy-key
+
