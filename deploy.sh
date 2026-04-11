@@ -23,7 +23,7 @@ HAS_GIT=$(ssh -A "$REMOTE" "test -d ~/$REMOTE_DIR/.git && echo yes || echo no")
 
 if [[ "$HAS_GIT" == "yes" ]]; then
     echo "📦 Step 1: git pull on server..."
-    ssh -A "$REMOTE" "cd ~/$REMOTE_DIR && git stash -q 2>/dev/null || true; git pull"
+    ssh -A "$REMOTE" "cd ~/$REMOTE_DIR && git stash -q 2>/dev/null || true; git pull --rebase"
 
     # Overlay uncommitted local changes if any
     if ! git -C "$SCRIPT_DIR" diff --quiet HEAD 2>/dev/null || \
