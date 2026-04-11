@@ -1284,6 +1284,17 @@
 		cursor: pointer;
 	}
 
+	/* ── Storage error banner ──────────────────────────────── */
+	#storageErrorBanner {
+		display: none;
+		background: #C00;
+		color: #FFF;
+		text-align: center;
+		padding: 10px;
+		font-size: 14px;
+		font-weight: 500;
+	}
+
 	/* ── Save button dirty state indicator ─────────────────── */
 	#saveGrooveButton.saveGrooveDirty #saveGrooveIcon {
 		color: var(--highlight-color);

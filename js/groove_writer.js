@@ -4666,6 +4666,23 @@ function GrooveWriter() {
 
 	// ── Groove Storage ──────────────────────────────────────────
 
+	root.showStorageError = function (message) {
+		var banner = document.getElementById("storageErrorBanner");
+		if (!banner) {
+			banner = document.createElement("div");
+			banner.id = "storageErrorBanner";
+			var container = document.getElementById("bottomButtonRow");
+			if (container) {
+				container.parentNode.insertBefore(banner, container.nextSibling);
+			} else {
+				document.body.appendChild(banner);
+			}
+		}
+		banner.textContent = message;
+		banner.style.display = "block";
+		setTimeout(function () { banner.style.display = "none"; }, 8000);
+	};
+
 	root.updateSaveDirtyState = function (currentQueryString) {
 		var icon = document.getElementById("saveGrooveIcon");
 		if (!icon) return;
@@ -4687,14 +4704,6 @@ function GrooveWriter() {
 	root.initGrooveStorage = function () {
 		grooveStorage.fetchFromServer(function () {
 			root.refreshGrooveList();
-
-			// Check for autosaved work from a previous session
-			var autosaved = grooveStorage.getAutosave();
-			var currentQuery = window.location.search;
-			if (autosaved && autosaved !== currentQuery && autosaved.length > 1) {
-				// Restore autosaved state — the user had unsaved work
-				set_Default_notes(autosaved);
-			}
 		});
 	};
 
@@ -4709,7 +4718,7 @@ function GrooveWriter() {
 	root.deleteSavedGroove = function (category, grooveId) {
 		grooveStorage.deleteGroove(category, grooveId, function (err) {
 			if (err) {
-				alert("Failed to delete groove: " + err.message);
+				root.showStorageError("Failed to delete groove: " + err.message);
 				return;
 			}
 			root.refreshGrooveList();
@@ -4726,7 +4735,7 @@ function GrooveWriter() {
 		if (ref) {
 			grooveStorage.updateGroove(queryString, function (err) {
 				if (err) {
-					alert("Failed to update groove: " + err.message);
+					root.showStorageError("Failed to update groove: " + err.message);
 					return;
 				}
 				grooveStorage.setLastSaved(queryString);
@@ -4792,7 +4801,7 @@ function GrooveWriter() {
 
 		grooveStorage.addGroove(category, name, queryString, function (err) {
 			if (err) {
-				alert("Failed to save groove: " + err.message);
+				root.showStorageError("Failed to save groove: " + err.message);
 				return;
 			}
 			grooveStorage.setLastSaved(queryString);
