@@ -2,8 +2,10 @@ import { coachState } from '../state/State.js';
 
 const CALIBRATION_BPM = 80;
 const BEAT_INTERVAL_MS = 60000 / CALIBRATION_BPM; // 750ms
-const TOTAL_TAPS = 20;
-const WARMUP_TAPS = 4;
+// 32 counted taps: with a typical human tap spread of 15-20 ms, the median is then good to
+// about +/-3 ms. The warm-up covers locking onto the click, which takes most people a few taps.
+const TOTAL_TAPS = 40;
+const WARMUP_TAPS = 8;
 const COUNTDOWN_BEATS = 4;
 const CLICK_FREQ_HZ = 1000;
 const CLICK_DURATION_S = 0.03;
@@ -24,6 +26,7 @@ export class CalibrationDialog {
     this._active = false;
     this._tapErrors = []; // raw signed errors for all taps (including warmup)
     this._tapCount = 0;
+    this._resultMs = null; // calibration offset from the last completed run
     this._beatTimes = []; // scheduled click times in the performance.now() domain, before output delay
     this._nextBeatIndex = 0;
     this._schedulerTimer = null;
@@ -42,7 +45,7 @@ export class CalibrationDialog {
 
             <div id="calib-instructions">
                 <p>Hit any drum pad or press any key in time with the metronome click.</p>
-                <p class="calib-subtle">The first ${WARMUP_TAPS} taps are warm-up and won't count.</p>
+                <p class="calib-subtle">Start on the very first click. The first ${WARMUP_TAPS} taps are warm-up and won't count, so use them to lock in.</p>
             </div>
 
             <div id="calib-countdown" style="display:none;">
@@ -272,31 +275,27 @@ export class CalibrationDialog {
     this._restoreMidiHandler();
 
     const usableTaps = this._tapErrors.slice(WARMUP_TAPS);
-    const median = this._computeMedian(usableTaps);
-    const rounded = Math.round(median);
+    this._resultMs = Math.round(this._computeMedian(usableTaps));
+    const spread = this._computeStdDev(usableTaps);
+    // standard error of the result: how far another run would typically land from this one
+    const precision = spread / Math.sqrt(usableTaps.length);
 
     this._showPhase('result');
 
     const valueEl = this.container.querySelector('#calib-result-value');
-    const sign = rounded >= 0 ? '+' : '';
-    valueEl.textContent = `${sign}${rounded} ms`;
+    const sign = this._resultMs >= 0 ? '+' : '';
+    valueEl.textContent = `${sign}${this._resultMs} ms`;
 
     const explEl = this.container.querySelector('#calib-result-explanation');
-    if (Math.abs(rounded) <= 5) {
-      explEl.textContent = 'Your timing is very well aligned — minimal compensation needed.';
-    } else if (rounded < 0) {
-      explEl.textContent = `You tend to hit ${Math.abs(rounded)} ms early. This will be compensated automatically.`;
-    } else {
-      explEl.textContent = `You tend to hit ${rounded} ms late. This will be compensated automatically.`;
-    }
+    const direction = this._resultMs < 0 ? 'before' : 'after';
+    explEl.textContent =
+      `Your taps landed ${Math.abs(this._resultMs)} ms ${direction} the click on average ` +
+      `(accurate to about \u00b1${Math.round(precision)} ms). ` +
+      `Taps varied by about \u00b1${Math.round(spread)} ms. Sessions are graded with this offset.`;
   }
 
   _accept() {
-    const usableTaps = this._tapErrors.slice(WARMUP_TAPS);
-    const median = this._computeMedian(usableTaps);
-    const rounded = Math.round(median);
-
-    coachState.calibrationOffset = rounded;
+    coachState.calibrationOffset = this._resultMs;
     coachState.calibrated = true;
     coachState.save();
 
@@ -352,6 +351,11 @@ export class CalibrationDialog {
   }
 
   // -- Helpers --
+
+  _computeStdDev(values) {
+    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+    return Math.sqrt(values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length);
+  }
 
   _computeMedian(values) {
     if (values.length === 0) return 0;
