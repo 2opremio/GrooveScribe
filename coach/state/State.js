@@ -4,6 +4,9 @@
 
 const VALID_MODES = ['practice', 'performance'];
 const VALID_TOLERANCES = ['strict', 'normal', 'relaxed'];
+// which hits near a calibration click count as the tap: only the loudest, or every hit
+const VALID_CALIBRATION_HIT_RULES = ['loudest', 'every'];
+const MAX_MIDI_VELOCITY = 127;
 
 const TOLERANCE_WINDOWS = {
   strict: { perfect: 15, good: 25, close: 40 },
@@ -25,6 +28,8 @@ const DEFAULTS = {
   showDebugGrid: false,
   metronomeVolume: 100,
   startWithSolo: true,
+  calibrationHitRule: 'loudest',
+  minHitVelocity: 0, // 0 = no hit is ignored for being soft
 };
 
 export class StateManager {
@@ -122,6 +127,34 @@ export class StateManager {
     this._data.metronomeVolume = Math.max(0, Math.min(100, Math.round(value)));
   }
 
+  // CalibrationHitRule: 'loudest' counts one tap per click (the loudest hit near it),
+  // 'every' counts every hit as a tap
+  get calibrationHitRule() {
+    return this._data.calibrationHitRule;
+  }
+
+  set calibrationHitRule(value) {
+    if (!VALID_CALIBRATION_HIT_RULES.includes(value)) {
+      console.warn(
+        `[State] Invalid calibrationHitRule '${value}', keeping '${this._data.calibrationHitRule}'`
+      );
+      return;
+    }
+    this._data.calibrationHitRule = value;
+  }
+
+  // MinHitVelocity: hits softer than this (MIDI velocity 0-127) are ignored, in sessions
+  // and in calibration; 0 ignores nothing
+  get minHitVelocity() {
+    return this._data.minHitVelocity;
+  }
+
+  set minHitVelocity(value) {
+    value = Number(value);
+    if (Number.isNaN(value)) return;
+    this._data.minHitVelocity = Math.max(0, Math.min(MAX_MIDI_VELOCITY, Math.round(value)));
+  }
+
   // StartWithSolo property — enable Solo (mute synth) when session starts
   get startWithSolo() {
     return this._data.startWithSolo;
@@ -198,6 +231,8 @@ export class StateManager {
       showDebugGrid: this.showDebugGrid,
       metronomeVolume: this.metronomeVolume,
       startWithSolo: this.startWithSolo,
+      calibrationHitRule: this.calibrationHitRule,
+      minHitVelocity: this.minHitVelocity,
       drumMapPreset: this.drumMapPreset,
       drumMapCustom: this.drumMapCustom,
       drumMapCustomHihatCC: this.drumMapCustomHihatCC,
@@ -216,6 +251,8 @@ export class StateManager {
     if (obj.showDebugGrid !== undefined) this.showDebugGrid = obj.showDebugGrid;
     if (obj.metronomeVolume !== undefined) this.metronomeVolume = obj.metronomeVolume;
     if (obj.startWithSolo !== undefined) this.startWithSolo = obj.startWithSolo;
+    if (obj.calibrationHitRule !== undefined) this.calibrationHitRule = obj.calibrationHitRule;
+    if (obj.minHitVelocity !== undefined) this.minHitVelocity = obj.minHitVelocity;
     if (obj.drumMapPreset !== undefined) this.drumMapPreset = obj.drumMapPreset;
     if (obj.drumMapCustom !== undefined) this.drumMapCustom = obj.drumMapCustom;
     if (obj.drumMapCustomHihatCC !== undefined)

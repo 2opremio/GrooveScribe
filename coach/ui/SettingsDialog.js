@@ -61,6 +61,21 @@ export class SettingsDialog {
       <div id="coach-calib-hint" class="coach-calib-hint" style="display:none;">Not calibrated</div>
 
       <div class="coach-setting-row">
+        <label>Calibration Counts</label>
+        <select id="coach-calib-hit-rule-select">
+          <option value="loudest">Loudest hit per click</option>
+          <option value="every">Every hit</option>
+        </select>
+      </div>
+
+      <div class="coach-setting-row">
+        <label>Ignore Hits Below</label>
+        <span class="coach-latency-group">
+          <input type="number" id="coach-min-velocity-input" min="0" max="127" step="1" value="0"> velocity (0 = off)
+        </span>
+      </div>
+
+      <div class="coach-setting-row">
         <label>Metronome Vol</label>
         <span class="coach-slider-group">
           <input type="range" id="coach-metronome-vol" min="0" max="100" value="100">
@@ -134,6 +149,9 @@ export class SettingsDialog {
     this.container.querySelector('#coach-countin-check').checked = coachState.countIn;
     this.container.querySelector('#coach-tolerance-select').value = coachState.tolerance;
     this.container.querySelector('#coach-latency-input').value = coachState.calibrationOffset;
+    this.container.querySelector('#coach-calib-hit-rule-select').value =
+      coachState.calibrationHitRule;
+    this.container.querySelector('#coach-min-velocity-input').value = coachState.minHitVelocity;
     this.container.querySelector('#coach-debug-grid-check').checked = coachState.showDebugGrid;
     this.container.querySelector('#coach-start-solo-check').checked = coachState.startWithSolo;
     this.container.querySelector('#coach-metronome-vol').value = coachState.metronomeVolume;
@@ -173,6 +191,10 @@ export class SettingsDialog {
     coachState.tolerance = this.container.querySelector('#coach-tolerance-select').value;
     coachState.calibrationOffset =
       parseInt(this.container.querySelector('#coach-latency-input').value) || 0;
+    coachState.calibrationHitRule = this.container.querySelector(
+      '#coach-calib-hit-rule-select'
+    ).value;
+    coachState.minHitVelocity = this.container.querySelector('#coach-min-velocity-input').value;
     coachState.showDebugGrid = this.container.querySelector('#coach-debug-grid-check').checked;
     coachState.startWithSolo = this.container.querySelector('#coach-start-solo-check').checked;
     coachState.metronomeVolume = parseInt(

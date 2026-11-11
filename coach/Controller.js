@@ -507,6 +507,7 @@ export class Controller {
    */
   handleMidiHit(drum, timestamp, velocity) {
     if (!this.engine.isPlaying) return;
+    if (velocity < coachState.minHitVelocity) return;
 
     // Create evaluation
     const evaluation = this.engine.handleMidiHit(drum, timestamp);

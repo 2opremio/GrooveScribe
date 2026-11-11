@@ -32,9 +32,8 @@ export class CalibrationDialog {
     this._active = false;
     this._tapErrors = []; // signed error of each tapped beat, in beat order (including warmup)
     this._tapCount = 0; // beats that have a tap
-    // beat index -> {error, velocity, dot}: one tap per click, the loudest hit near it, so
-    // crosstalk and the soft extra hits a pad can fire around a stroke don't count as taps
-    this._tapsByBeat = new Map();
+    // the counted taps, as {beat, error, velocity, dot}, keyed per coachState.calibrationHitRule
+    this._taps = new Map();
     this._resultMs = null; // calibration offset from the last completed run
     this._beatTimes = []; // scheduled click times in the performance.now() domain, before output delay
     this._schedulerTimer = null;
@@ -55,6 +54,7 @@ export class CalibrationDialog {
             <div id="calib-instructions">
                 <p>Hit any drum pad or press any key in time with the metronome click.</p>
                 <p class="calib-subtle">Start on the very first click. The first ${WARMUP_TAPS} taps are warm-up and won't count, so use them to lock in.</p>
+                <p class="calib-subtle" id="calib-hit-rule"></p>
             </div>
 
             <div id="calib-countdown" style="display:none;">
@@ -101,6 +101,16 @@ export class CalibrationDialog {
   }
 
   show() {
+    const rules = [
+      coachState.calibrationHitRule === 'loudest'
+        ? 'Only the loudest hit near each click counts.'
+        : 'Every hit counts as a tap.',
+    ];
+    if (coachState.minHitVelocity > 0) {
+      rules.push(`Hits softer than velocity ${coachState.minHitVelocity} are ignored.`);
+    }
+    this.container.querySelector('#calib-hit-rule').textContent =
+      rules.join(' ') + ' (Change this in Coach settings.)';
     this._reset();
     this.container.style.display = 'block';
     this._showPhase('instructions');
@@ -167,7 +177,7 @@ export class CalibrationDialog {
     this._showPhase('tapping');
     this._tapErrors = [];
     this._tapCount = 0;
-    this._tapsByBeat = new Map();
+    this._taps = new Map();
     this._beatTimes = [];
 
     // Clear any existing dots from a previous run
@@ -216,6 +226,7 @@ export class CalibrationDialog {
 
   _onTap(timestamp, velocity) {
     if (!this._active) return;
+    if (velocity < coachState.minHitVelocity) return;
 
     // The browser's output delay is read at tap time, exactly as sessions read it, so the
     // calibration offset is whatever remains on top of it.
@@ -229,7 +240,12 @@ export class CalibrationDialog {
     }
     const error = timestamp - (this._beatTimes[beat] + outputDelay);
 
-    const existing = this._tapsByBeat.get(beat);
+    // 'loudest' keys taps by their click, so a louder hit replaces a softer one on the same
+    // click; 'every' gives each hit its own key
+    const key = coachState.calibrationHitRule === 'loudest' ? beat : `hit${this._tapCount}`;
+    const existing = this._taps.get(key);
+    // all taps are in: only a louder hit replacing one of them still counts
+    if (!existing && this._tapCount >= TOTAL_TAPS) return;
     if (existing) {
       if (velocity <= existing.velocity) return;
       existing.error = error;
@@ -238,17 +254,20 @@ export class CalibrationDialog {
     } else {
       const dot = this._addDot(this._tapCount < WARMUP_TAPS);
       this._placeDot(dot, error);
-      this._tapsByBeat.set(beat, { error, velocity, dot });
+      this._taps.set(key, { beat, error, velocity, dot });
       this._flashBeatIndicator();
     }
-    this._tapCount = this._tapsByBeat.size;
-    this._tapErrors = [...this._tapsByBeat.keys()]
-      .sort((a, b) => a - b)
-      .map((b) => this._tapsByBeat.get(b).error);
+    this._tapCount = this._taps.size;
+    // insertion order is tap order; under 'loudest' a replaced tap keeps its place
+    this._tapErrors = [...this._taps.values()].map((tap) => tap.error);
     this._updateDisplay();
 
     if (!existing && this._tapCount === TOTAL_TAPS) {
-      // a louder hit can still replace this beat's tap until the next beat is nearer
+      if (coachState.calibrationHitRule !== 'loudest') {
+        this._finishTapping();
+        return;
+      }
+      // a louder hit can still replace this click's tap until the next click is nearer
       const beatWindowEnd = this._beatTimes[beat] + outputDelay + BEAT_INTERVAL_MS / 2;
       setTimeout(() => this._finishTapping(), Math.max(0, beatWindowEnd - performance.now()));
     }
@@ -402,9 +421,10 @@ export class CalibrationDialog {
 
   _reset() {
     this._stop();
+    this._resultMs = null;
     this._tapErrors = [];
     this._tapCount = 0;
-    this._tapsByBeat = new Map();
+    this._taps = new Map();
     this._beatTimes = [];
 
     // Clear timing strip dots
