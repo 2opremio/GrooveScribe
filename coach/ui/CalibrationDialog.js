@@ -28,8 +28,8 @@ export class CalibrationDialog {
     this._tapCount = 0;
     this._resultMs = null; // calibration offset from the last completed run
     this._beatTimes = []; // scheduled click times in the performance.now() domain, before output delay
-    this._nextBeatIndex = 0;
     this._schedulerTimer = null;
+    this._pendingClicks = []; // oscillators scheduled for the tapping phase, stopped when it ends
     this._countdownLeft = 0;
     this._originalMidiOnHit = null;
     this._onKeyDown = (e) => this._handleKeyTap(e);
@@ -159,7 +159,6 @@ export class CalibrationDialog {
     this._tapErrors = [];
     this._tapCount = 0;
     this._beatTimes = [];
-    this._nextBeatIndex = 0;
 
     // Clear any existing dots from a previous run
     const strip = this.container.querySelector('#calib-timing-strip');
@@ -185,10 +184,12 @@ export class CalibrationDialog {
     const perfNow = performance.now();
     const audioNow = audioCtx.currentTime;
 
-    const totalBeats = TOTAL_TAPS + 2; // schedule a couple extra for safety
+    // a couple of clicks beyond the last counted tap, so a slightly late final tap still
+    // has a click to land on; _stopPendingClicks silences them once tapping ends
+    const totalBeats = TOTAL_TAPS + 2;
     for (let i = 0; i < totalBeats; i++) {
       const audioTime = audioNow + (i * BEAT_INTERVAL_MS) / 1000;
-      this._scheduleClickAt(audioTime);
+      this._pendingClicks.push(this._scheduleClickAt(audioTime));
       this._beatTimes.push(perfNow + i * BEAT_INTERVAL_MS);
     }
   }
@@ -272,6 +273,7 @@ export class CalibrationDialog {
 
   _finishTapping() {
     this._active = false;
+    this._stopPendingClicks();
     this._restoreMidiHandler();
 
     const usableTaps = this._tapErrors.slice(WARMUP_TAPS);
@@ -348,6 +350,12 @@ export class CalibrationDialog {
     gain.gain.exponentialRampToValueAtTime(0.001, audioTime + CLICK_DURATION_S);
     osc.start(audioTime);
     osc.stop(audioTime + CLICK_DURATION_S);
+    return osc;
+  }
+
+  _stopPendingClicks() {
+    for (const osc of this._pendingClicks) osc.stop();
+    this._pendingClicks = [];
   }
 
   // -- Helpers --
@@ -372,7 +380,6 @@ export class CalibrationDialog {
     this._tapErrors = [];
     this._tapCount = 0;
     this._beatTimes = [];
-    this._nextBeatIndex = 0;
 
     // Clear timing strip dots
     if (this.container) {
@@ -383,6 +390,7 @@ export class CalibrationDialog {
 
   _stop() {
     this._active = false;
+    this._stopPendingClicks();
     if (this._schedulerTimer) {
       clearTimeout(this._schedulerTimer);
       this._schedulerTimer = null;
