@@ -52,6 +52,7 @@ export class Controller {
     this.midiConnected = false;
     this.sessionStartTime = 0;
     this.currentRepetition = 0;
+    this.countInPlaying = false; // the count-in runs before the first graded pass
   }
 
   /**
@@ -215,10 +216,10 @@ export class Controller {
     const measureDurationMs = this.renderer.measureDurationMs;
     this.sessionStartTime = scheduledAt - (totalMeasures - 1) * measureDurationMs;
 
-    // Start engine AFTER back-dating so engine relTime matches
-    // controller hitTimeMs (both use the same sessionStartTime).
-    // Circle drawing is gated by _renderingEnabled (set at M0 barline).
-    this.engine.start(this.sessionStartTime);
+    // The count-in is for listening: nothing is graded until the first pass starts
+    // (in _onRepeat), so a hit during it can't count against the player.
+    this.countInPlaying = true;
+    this.engine.stop();
 
     // Start clearing loop with rendering disabled (no playline or
     // circles visible during count-in).
@@ -252,7 +253,9 @@ export class Controller {
    * @param {number} scheduledAt - performance.now() when the next pass was scheduled to start
    */
   _onRepeat(scheduledAt) {
-    this.currentRepetition++;
+    // the count-in ending starts the first pass; it isn't a repetition of the groove
+    if (this.countInPlaying) this.countInPlaying = false;
+    else this.currentRepetition++;
 
     if (coachState.mode === 'performance' && this.currentRepetition >= coachState.reps) {
       // Stop playback after reaching target repetitions in performance mode
