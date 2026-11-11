@@ -61,7 +61,7 @@ export const EditorDrumToModuleDrum = {
   [DrumType.KICK]: DrumType.KICK,
   [DrumType.SNARE]: DrumType.SNARE,
   [DrumType.SNARE_GHOST]: DrumType.SNARE,
-  [DrumType.SNARE_XSTICK]: DrumType.SNARE,
+  [DrumType.SNARE_XSTICK]: DrumType.SNARE_XSTICK, // its own trigger zone, not the snare head
   [DrumType.SNARE_FLAM]: DrumType.SNARE,
   [DrumType.FLAM_GRACE]: DrumType.SNARE,
   [DrumType.SNARE_BUZZ]: DrumType.SNARE, // This should be implemented properly
