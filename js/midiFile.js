@@ -60,6 +60,7 @@ import {
   constant_OUR_MIDI_VELOCITY_NORMAL,
 } from './constants.js';
 import { isTripletDivisionFromNotesPerMeasure, scaleNoteArrayToFullSize } from './musicMath.js';
+import { MIDI_TICKS_PER_QUARTER, measureSlotTicks } from './noteTiming.js';
 
 export function MIDI_build_midi_url_count_in_track(gu, timeSigTop, timeSigBottom) {
   var midiFile = new Midi.File();
@@ -69,15 +70,8 @@ export function MIDI_build_midi_url_count_in_track(gu, timeSigTop, timeSigBottom
   midiTrack.setTempo(gu.getTempo());
   midiTrack.setInstrument(0, 0x13);
 
-  // start of midi track
-  // Some sort of bug in the midi player makes it skip the first note without a blank
-  // TODO: Find and fix midi bug
-  midiTrack.addNoteOff(9, 60, 1); // add a blank note for spacing
-
-  var noteDelay = 128; // quarter notes over x/4 time
-  if (timeSigBottom == 8)
-    noteDelay = 64; // 8th notes over x/8 time
-  else if (timeSigBottom == 16) noteDelay = 32; // 16th notes over x/16 time
+  // one click per beat; the beat is the time signature's bottom note
+  var noteDelay = (MIDI_TICKS_PER_QUARTER * 4) / timeSigBottom;
 
   // add count in (the Drum Coach can override the click velocity via its volume slider)
   var countInVelocity =
@@ -119,48 +113,13 @@ export function MIDI_from_HH_Snare_Kick_Arrays(
     swing_percentage = 0;
   }
 
-  // start of midi track
-  // Some sort of bug in the midi player makes it skip the first note without a blank
-  // TODO: Find and fix midi bug
-  if (midiTrack.events.length < 4) {
-    midiTrack.addNoteOff(midi_channel, 60, 1); // add a blank note for spacing
-  }
-
   var isTriplets = isTripletDivisionFromNotesPerMeasure(num_notes, timeSigTop, timeSigBottom);
+  var slotTicks = measureSlotTicks(num_notes, num_notes_for_swing, swing_percentage, isTriplets);
   var offsetClickStartBeat = gu.getMetronomeOptionsOffsetClickStartRotation(isTriplets);
   var delay_for_next_note = 0;
 
   for (var i = 0; i < num_notes; i++) {
-    var duration = 0;
-
-    if (isTriplets) {
-      duration = 10.666; // "ticks"   16 for 32nd notes.  10.66 for 48th triplets
-    } else {
-      duration = 16;
-    }
-
-    if (swing_percentage !== 0) {
-      // swing effects the note placement of the e and the a.  (1e&a)
-      // swing increases the distance between the 1 and the e ad shortens the distance between the e and the &
-      // likewise the distance between the & and the a is increased and the a and the 1 is shortened
-      //  So it sounds like this:   1-e&-a2-e&-a3-e&-a4-e&-a
-      var scaler = num_notes / num_notes_for_swing;
-      var val = i % (4 * scaler);
-
-      if (val < scaler) {
-        // this is the 1, increase the distance between this note and the e
-        duration += duration * swing_percentage;
-      } else if (val < scaler * 2) {
-        // this is the e, shorten the distance between this note and the &
-        duration -= duration * swing_percentage;
-      } else if (val < scaler * 3) {
-        // this is the &, increase the distance between this note and the a
-        duration += duration * swing_percentage;
-      } else if (val < scaler * 4) {
-        // this is the a, shorten the distance between this note and the 2
-        duration -= duration * swing_percentage;
-      }
-    }
+    var duration = slotTicks[i + 1] - slotTicks[i];
 
     // Metronome sounds.
     var metronome_note = false;
@@ -458,7 +417,9 @@ export function MIDI_from_HH_Snare_Kick_Arrays(
     delay_for_next_note += duration;
   }
 
-  if (delay_for_next_note) midiTrack.addNoteOff(0, 60, delay_for_next_note - 1); // add a blank note for spacing
+  // a silent event carrying the time left after the measure's last note, so the measure
+  // (and the loop) has its full length
+  if (delay_for_next_note) midiTrack.addNoteOff(0, 60, delay_for_next_note);
 } // end of function
 
 /**

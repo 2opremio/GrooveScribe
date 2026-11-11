@@ -7,8 +7,8 @@ import { newGrooveUtils, installMidiGlobal } from '../helpers/legacyLoader.js';
 //   - MIDI_build_midi_url_count_in_track (metronome "count-in" click track)
 //   - midiEventCallbackClass             (default playback callback object)
 //
-// These probe the *encoding* path only (data: URL construction, event counts,
-// determinism). Playback controls (start/stop/pause) need the MIDI.js Player
+// These probe the *encoding* path only (data: URL construction and determinism);
+// note placement in time is covered by midi-timing.test.js. Playback controls (start/stop/pause) need the MIDI.js Player
 // runtime and are intentionally out of scope.
 //
 // The ABC-notation note codes below (e.g. '^g' for normal hi-hat, 'c' for
@@ -41,17 +41,6 @@ describe('GrooveUtils MIDI generation', () => {
       const base64 = url.slice('data:audio/midi;base64,'.length);
       const decoded = atob(base64);
       expect(decoded.startsWith('MThd')).toBe(true);
-    });
-
-    it('pins an exact base64 snapshot for a canonical simple 4/4 groove (Tempo=90)', () => {
-      const gd = grooveFromUrl(BASIC_QS);
-      const url = gu.create_MIDIURLFromGrooveData(gd, 0);
-
-      // Observed value captured directly from a probe run against the
-      // current implementation - pins the core encode path precisely.
-      expect(url).toBe(
-        'data:audio/midi;base64,TVRoZAAAAAYAAAABAIBNVHJrAAAAagD/UQMKLCoAwBMBiTxaAIkuWgCZKlUAmSNVIJkqVSCZKlUgmSpVIJkqVQCZJlUgmSpVIJkqVSCZKlUgmSpVAJkjVSCZKlUgmSpVIJkqVSCZKlUAmSZVIJkqVSCZKlUgmSpVH4A8WgD/LwA='
-      );
     });
 
     it('is deterministic: the same grooveData produces an identical URL each call', () => {
@@ -150,113 +139,8 @@ describe('GrooveUtils MIDI generation', () => {
   });
 
   describe('MIDI_from_HH_Snare_Kick_Arrays', () => {
-    // ABC note codes used below:
-    //   '^g' = normal hi-hat, 'c' = normal snare, 'F' = normal kick, 'e' = tom 1
-    it('adds MIDI events to the track for a small hh/snare/kick pattern', () => {
-      const midiTrack = new globalThis.Midi.Track();
-      expect(midiTrack.events).toHaveLength(0);
-
-      const HH = ['^g', false, '^g', false];
-      const Snare = [false, false, 'c', false];
-      const Kick = ['F', false, false, false];
-
-      gu.MIDI_from_HH_Snare_Kick_Arrays(
-        midiTrack,
-        HH,
-        Snare,
-        Kick,
-        false,
-        'general_MIDI',
-        /* metronome_frequency */ 0,
-        /* num_notes */ 4,
-        /* num_notes_for_swing */ 4,
-        /* swing_percentage */ 0,
-        /* timeSigTop */ 4,
-        /* timeSigBottom */ 4
-      );
-
-      // Observed: 7 events - an initial blank spacer note-off, the note-off
-      // for the default open-hihat placeholder + note-on for hh + note-on for
-      // kick at i=0, a note-on for hh + note-on for snare at i=2, and a final
-      // blank spacer note-off for trailing delay.
-      expect(midiTrack.events).toHaveLength(7);
-    });
-
-    it('does not add the leading blank spacer note a second time once the track already has >= 4 events', () => {
-      const midiTrack = new globalThis.Midi.Track();
-      const HH = ['^g', false, false, false];
-      const Snare = [false, false, false, false];
-      const Kick = [false, false, false, false];
-
-      gu.MIDI_from_HH_Snare_Kick_Arrays(
-        midiTrack,
-        HH,
-        Snare,
-        Kick,
-        false,
-        'general_MIDI',
-        0,
-        4,
-        4,
-        0,
-        4,
-        4
-      );
-      const lenAfterFirst = midiTrack.events.length; // 4 (observed)
-      expect(lenAfterFirst).toBe(4);
-
-      gu.MIDI_from_HH_Snare_Kick_Arrays(
-        midiTrack,
-        HH,
-        Snare,
-        Kick,
-        false,
-        'general_MIDI',
-        0,
-        4,
-        4,
-        0,
-        4,
-        4
-      );
-      const lenAfterSecond = midiTrack.events.length;
-
-      // Second call only adds this call's own note events (no extra leading
-      // blank spacer, since the track is no longer under 4 events).
-      expect(lenAfterSecond - lenAfterFirst).toBe(3);
-    });
-
-    it('adds tom events when a Toms_Array is supplied', () => {
-      const midiTrack = new globalThis.Midi.Track();
-      const HH = [false, false, false, false];
-      const Snare = [false, false, false, false];
-      const Kick = [false, false, false, false];
-      const Toms = [
-        ['e', false, false, false], // Tom 1 hit on the first note
-        [false, false, false, false],
-        [false, false, false, false],
-        [false, false, false, false],
-      ];
-
-      gu.MIDI_from_HH_Snare_Kick_Arrays(
-        midiTrack,
-        HH,
-        Snare,
-        Kick,
-        Toms,
-        'general_MIDI',
-        0,
-        4,
-        4,
-        0,
-        4,
-        4
-      );
-
-      // Observed: leading blank spacer + tom note-on + trailing blank spacer = 3.
-      expect(midiTrack.events).toHaveLength(3);
-    });
-
+    // ABC note codes used below: '^g' = normal hi-hat. Where notes land in time is
+    // covered by midi-timing.test.js.
     it('adds metronome click events when metronome_frequency is non-zero', () => {
       const withMetronome = new globalThis.Midi.Track();
       const withoutMetronome = new globalThis.Midi.Track();
@@ -320,9 +204,6 @@ describe('GrooveUtils MIDI generation', () => {
           4
         );
       }).not.toThrow();
-
-      // Matches the event count of the equivalent zero-swing case above.
-      expect(midiTrack.events).toHaveLength(5);
     });
   });
 

@@ -105,6 +105,7 @@ export default [
       'js/gridState.js',
       'js/urlSerialization.js',
       'js/midiFile.js',
+      'js/noteTiming.js',
       'js/abcNotation.js',
       'js/groove_utils.js',
       'js/groove_writer.js',
