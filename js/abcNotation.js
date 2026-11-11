@@ -68,6 +68,7 @@ function naturalizeSnaresAfterCrossStick(voiceString) {
     atLineStart = ch === '\n';
     if (ch === '!' || ch === '"') {
       var close = voiceString.indexOf(ch, i + 1);
+      if (close < 0) throw new Error('Unterminated ' + ch + ' in ABC voice: ' + voiceString);
       out += voiceString.slice(i, close + 1);
       i = close;
       continue;
