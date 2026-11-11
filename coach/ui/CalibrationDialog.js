@@ -7,8 +7,12 @@ const BEAT_INTERVAL_MS = 60000 / CALIBRATION_BPM; // 750ms
 const TOTAL_TAPS = 40;
 const WARMUP_TAPS = 8;
 const COUNTDOWN_BEATS = 4;
-const CLICK_FREQ_HZ = 1000;
+// Well above a snare's body (roughly 150-400 Hz plus a noise band), so the click doesn't
+// blur into the drum being hit on it.
+const CLICK_FREQ_HZ = 2500;
 const CLICK_DURATION_S = 0.03;
+// gain at 100% metronome volume; just under full scale, so the click can't clip
+const CLICK_MAX_GAIN = 0.9;
 const TIMING_STRIP_RANGE_MS = 80; // strip shows +/- this many ms
 
 /**
@@ -345,7 +349,7 @@ export class CalibrationDialog {
     gain.connect(ctx.destination);
     osc.frequency.value = CLICK_FREQ_HZ;
     osc.type = 'sine';
-    const clickGain = 0.5 * (coachState.metronomeVolume / 100);
+    const clickGain = CLICK_MAX_GAIN * (coachState.metronomeVolume / 100);
     gain.gain.setValueAtTime(clickGain, audioTime);
     gain.gain.exponentialRampToValueAtTime(0.001, audioTime + CLICK_DURATION_S);
     osc.start(audioTime);
