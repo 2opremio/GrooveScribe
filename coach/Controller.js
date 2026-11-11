@@ -20,7 +20,8 @@ import { DrumMapDialog } from './ui/DrumMapDialog.js';
 export class Controller {
   constructor(grooveWriter) {
     this.grooveWriter = grooveWriter;
-    this.engine = new Engine();
+    this.latencyManager = new LatencyManager();
+    this.engine = new Engine({ latencyMs: () => this._latencyMs() });
     this.abcMapper = new ABCIndexMapper();
     this.midiHandler = new MidiInputHandler({
       onHit: (drum, timestamp, velocity) => this.handleMidiHit(drum, timestamp, velocity),
@@ -28,7 +29,6 @@ export class Controller {
     });
     this.drumMapPresets = null; // Loaded in init()
     this.drumMapPresetsById = null;
-    this.latencyManager = new LatencyManager();
     this.renderer = new FeedbackRenderer('#svgTarget');
     this.playerBar = new PlayerBar({
       grooveWriter,
@@ -218,7 +218,7 @@ export class Controller {
     this.renderer.scheduleMeasureClearing(countInStartTimeMs);
 
     this.renderer.startPlayLine(
-      () => performance.now() - this.sessionStartTime - this.engine.audioLatency
+      () => performance.now() - this.sessionStartTime - this._latencyMs()
     );
 
     if (coachState.showDebugGrid) {
@@ -267,7 +267,7 @@ export class Controller {
     // Start if not running yet (safety fallback).
     if (!this.renderer._playLineGetTime) {
       this.renderer.startPlayLine(
-        () => performance.now() - this.sessionStartTime - this.engine.audioLatency
+        () => performance.now() - this.sessionStartTime - this._latencyMs()
       );
     }
 
@@ -301,11 +301,6 @@ export class Controller {
 
       // 2. Setup engine with tolerance windows based on settings
       this.engine.windows = coachState.getToleranceWindows();
-      // Initialize latency from browser's AudioContext (auto-detects output + base latency)
-      if (typeof MIDI !== 'undefined' && MIDI.Player?.ctx) {
-        this.latencyManager.init(MIDI.Player.ctx);
-      }
-      this.engine.audioLatency = this.latencyManager.getTotalOffset();
       this.engine.loadGroove({ target: grooveData });
 
       // 3. Activate coaching mode
@@ -505,8 +500,7 @@ export class Controller {
     if (!evaluation) return;
 
     // Calculate hit time relative to groove start (subtract audio latency)
-    const audioLatency = this.engine.audioLatency;
-    const hitTimeMs = timestamp - this.sessionStartTime - audioLatency;
+    const hitTimeMs = timestamp - this.sessionStartTime - this._latencyMs();
     const effectiveDrum = evaluation.isGraceNote ? DrumType.FLAM_GRACE : drum;
 
     if (evaluation.isMatch) {
@@ -765,6 +759,14 @@ export class Controller {
       return `DrumMap=${coachState.drumMapPreset}&`;
     }
     return '';
+  }
+
+  /**
+   * Current delay from GrooveScribe scheduling a note to the player's hit on it arriving.
+   * The groove's audio is scheduled on the MIDI.js player's AudioContext.
+   */
+  _latencyMs() {
+    return this.latencyManager.getTotalOffset(MIDI.Player.ctx);
   }
 
   async _ensureMidiConnected() {

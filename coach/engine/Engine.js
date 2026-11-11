@@ -22,9 +22,9 @@ export class Engine {
     this.groove = null; // Current groove/pattern
     this.noteTimeline = []; // Flattened note schedule [{time, type, ...}]
     this.results = []; // Hit results for scoring
-    this.audioLatency = options.audioLatency !== undefined ? options.audioLatency : 50;
-    this.calibrationOffset =
-      options.calibrationOffset !== undefined ? options.calibrationOffset : 0;
+    // () => ms from scheduling a note to the player's hit on it arriving; read per hit
+    // because the browser's reported output delay changes once playback is running
+    this.latencyMs = options.latencyMs;
     this.windows = options.windows || { perfect: 20, good: 35, close: 50 };
     this.onHitEvaluated = options.onHitEvaluated || (() => {});
 
@@ -106,9 +106,10 @@ export class Engine {
    * @param {Object} note - Timeline note to evaluate
    * @param {string} drum - Incoming MIDI drum type
    * @param {number} relativeHitTime - Hit timestamp relative to session start (ms)
+   * @param {number} latency - Current scheduling-to-hit delay (ms), from latencyMs()
    * @returns {{ absDiff: number, isGraceNote: boolean } | null} Match info, or null if not a candidate
    */
-  _evaluateCandidate(note, drum, relativeHitTime) {
+  _evaluateCandidate(note, drum, relativeHitTime, latency) {
     const isMatch = this._isTypeMatch(drum, note.type);
     // Special case: snare can match snare_flam as the grace note.
     // note.type is normalized to 'snare', so we check editorType for flam.
@@ -117,7 +118,7 @@ export class Engine {
     if (!isMatch && !isFlamGraceMatch) return null;
     if (note.matched) return null;
 
-    const targetTime = note.time + this.audioLatency;
+    const targetTime = note.time + latency;
     const diff = relativeHitTime - targetTime; // Signed: negative = early
     const absDiff = Math.abs(diff);
 
@@ -162,6 +163,7 @@ export class Engine {
   handleMidiHit(drum, timestamp) {
     if (!this.isPlaying) return null;
     const tl = this.noteTimeline;
+    const latency = this.latencyMs();
 
     // relativeHitTime: from the hit's actual timestamp. Used for all matching.
     const relativeHitTime = timestamp - this.startTime;
@@ -171,11 +173,11 @@ export class Engine {
     const playbackTime = performance.now() - this.startTime;
 
     // Step 1: Advance cursor past notes that are definitively unmatchable.
-    // A note is unmatchable when its expected-heard-time (note.time + audioLatency)
+    // A note is unmatchable when its expected-heard-time (note.time + latency)
     // is more than SCAN_RADIUS_MS behind playbackTime.
     while (
       this._searchCursor < tl.length &&
-      playbackTime - (tl[this._searchCursor].time + this.audioLatency) > SCAN_RADIUS_MS
+      playbackTime - (tl[this._searchCursor].time + latency) > SCAN_RADIUS_MS
     ) {
       this._searchCursor++;
     }
@@ -188,9 +190,9 @@ export class Engine {
     for (let i = this._searchCursor; i < tl.length; i++) {
       const note = tl[i];
       // Stop when remaining notes are too far in the future to match this hit
-      if (note.time + this.audioLatency - relativeHitTime > SCAN_RADIUS_MS) break;
+      if (note.time + latency - relativeHitTime > SCAN_RADIUS_MS) break;
 
-      const result = this._evaluateCandidate(note, drum, relativeHitTime);
+      const result = this._evaluateCandidate(note, drum, relativeHitTime, latency);
       if (result && result.absDiff < minDiff) {
         minDiff = result.absDiff;
         bestMatch = note;
@@ -226,12 +228,7 @@ export class Engine {
       bestMatch.graceMatched = true;
     } else {
       // Normal hit evaluation
-      evaluation = evaluateHit(
-        timestamp,
-        this.startTime + bestMatch.time,
-        this.audioLatency,
-        this.windows
-      );
+      evaluation = evaluateHit(timestamp, this.startTime + bestMatch.time, latency, this.windows);
       evaluation.noteIndex = bestMatch.originalIndex;
       bestMatch.matched = true;
     }

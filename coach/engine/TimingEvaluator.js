@@ -3,7 +3,7 @@
  *
  * @param {number} hitTimestamp - When user hit (ms, performance.now domain)
  * @param {number} targetTime - When note should be played (ms)
- * @param {number} audioLatency - Measured audio output latency (ms)
+ * @param {number} audioLatency - Delay from scheduling a note to a hit on it arriving (ms)
  * @param {Object} windows - Timing windows {perfect, good, close}
  * @returns {Object} {timingError, tier, isMatch}
  */

@@ -24,7 +24,7 @@ export class CalibrationDialog {
     this._active = false;
     this._tapErrors = []; // raw signed errors for all taps (including warmup)
     this._tapCount = 0;
-    this._beatTimes = []; // scheduled beat times in performance.now() domain
+    this._beatTimes = []; // scheduled click times in the performance.now() domain, before output delay
     this._nextBeatIndex = 0;
     this._schedulerTimer = null;
     this._countdownLeft = 0;
@@ -186,11 +186,7 @@ export class CalibrationDialog {
     for (let i = 0; i < totalBeats; i++) {
       const audioTime = audioNow + (i * BEAT_INTERVAL_MS) / 1000;
       this._scheduleClickAt(audioTime);
-
-      // Record expected heard time in performance.now() domain
-      const audioLatencySec = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
-      const heardPerfTime = perfNow + i * BEAT_INTERVAL_MS + audioLatencySec * 1000;
-      this._beatTimes.push(heardPerfTime);
+      this._beatTimes.push(perfNow + i * BEAT_INTERVAL_MS);
     }
   }
 
@@ -205,10 +201,14 @@ export class CalibrationDialog {
   _onTap(timestamp) {
     if (!this._active) return;
 
+    // The browser's output delay is read at tap time, exactly as sessions read it, so the
+    // calibration offset is whatever remains on top of it.
+    const outputDelay = this.latencyManager.outputDelayMs(this._audioCtx);
+
     // Find the nearest beat
     let bestError = Infinity;
     for (const beatTime of this._beatTimes) {
-      const error = timestamp - beatTime;
+      const error = timestamp - (beatTime + outputDelay);
       if (Math.abs(error) < Math.abs(bestError)) {
         bestError = error;
       }
@@ -297,7 +297,6 @@ export class CalibrationDialog {
     coachState.calibrationOffset = rounded;
     coachState.calibrated = true;
     coachState.save();
-    this.latencyManager.calibrationOffset = rounded;
 
     this.hide();
     window.dispatchEvent(new CustomEvent('calibration-accepted'));

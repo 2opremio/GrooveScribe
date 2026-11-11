@@ -1,49 +1,38 @@
 import { coachState } from '../state/State.js';
 
+const MS_PER_SECOND = 1000;
+
 /**
- * LatencyManager - Handles audio and MIDI latency measurement.
+ * LatencyManager - How long after a sound is scheduled the player hears it.
  *
- * Owns all latency-related state. The calibrationOffset is persisted
- * in coachState (localStorage) and set via the CalibrationDialog.
+ * Two parts:
+ *  - the output delay the browser reports for the AudioContext, read at the moment it is
+ *    needed. Chromium reports a larger, stale value until output is running (64 ms before
+ *    playback vs 24 ms while playing on macOS), so the value must never be cached.
+ *  - the calibration offset (coachState), which covers everything the browser does not
+ *    report: the path after the browser (an external mixer, the audio interface, the
+ *    headphones), the MIDI input path, and any error in the browser's report.
+ *
+ * Calibration and sessions both go through outputDelayMs(), so whatever the browser
+ * reports, the calibration measures exactly the remainder. A browser that reports no
+ * output latency contributes 0 and its whole delay is measured by calibration.
  */
 export class LatencyManager {
-  constructor() {
-    this.audioContext = null;
-    this.audioLatency = 0; // No default guess — use init() for browser auto-detection
-    this.midiLatency = 1; // Default 1ms (USB MIDI is very fast)
-    this.calibrationOffset = coachState.calibrationOffset;
-  }
-
-  init(audioContext) {
-    this.audioContext = audioContext;
-    // Try to get browser-reported latency
-    if (audioContext) {
-      const browserLatency = this._getAutoLatency();
-      if (browserLatency > 0) {
-        this.audioLatency = browserLatency;
-      }
-    }
+  /**
+   * @param {AudioContext} audioContext - the context the sounds are scheduled on
+   * @returns {number} browser-reported output delay right now, in ms
+   */
+  outputDelayMs(audioContext) {
+    const outputLatency = audioContext.outputLatency ?? 0;
+    const baseLatency = audioContext.baseLatency ?? 0;
+    return (outputLatency + baseLatency) * MS_PER_SECOND;
   }
 
   /**
-   * Get the auto-detected audio latency from the browser's AudioContext.
-   * @returns {number} latency in milliseconds
+   * @param {AudioContext} audioContext - the context the sounds are scheduled on
+   * @returns {number} total delay from scheduling a sound to a hit on it arriving, in ms
    */
-  _getAutoLatency() {
-    if (!this.audioContext) return this.audioLatency;
-
-    // outputLatency is time from browser to speakers
-    // baseLatency is internal processing time
-    const latency = (this.audioContext.outputLatency || 0) + (this.audioContext.baseLatency || 0);
-
-    return latency * 1000; // Convert to ms
-  }
-
-  /**
-   * Calculate total offset for timing compensation
-   * @returns {number} Total offset in milliseconds
-   */
-  getTotalOffset() {
-    return this.audioLatency + this.midiLatency + this.calibrationOffset;
+  getTotalOffset(audioContext) {
+    return this.outputDelayMs(audioContext) + coachState.calibrationOffset;
   }
 }
