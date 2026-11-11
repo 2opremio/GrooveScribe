@@ -26,3 +26,6 @@ www/
 /android/
 /ios/
 .gradle/
+
+# Deploy key (private key only — .pub is committed)
+credentials/deploy-key
