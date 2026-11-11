@@ -2427,8 +2427,10 @@ function GrooveWriter() {
     svgTarget.innerHTML = svg_return.svg;
   };
 
+  // width of each exported staff-system image; height follows the system's aspect ratio
+  var EXPORT_IMAGE_WIDTH_PX = 2000;
+
   // Render an SVG that is good for download.
-  // Constant size at 2000x200
   function downloadImages(imageType) {
     var abc_source = generate_ABC(800);
     var svg_obj = root.myGrooveUtils.renderABCtoSVG(abc_source);
@@ -2442,22 +2444,19 @@ function GrooveWriter() {
     }
     filename += imageType;
 
-    var svg_images = svg_obj.svg.split('</svg>');
-    // that split should always create at least 2 since it will match that </svg> if there is only one
-    // since the split creates an extra one reduce the length by 1
-    for (var i = 0; i < svg_images.length - 1; i++) {
-      var myPablo = Pablo(svg_images[i] + '</svg>');
+    // abc2svg emits one self-contained <svg> per staff system (wrapped in layout <div>s).
+    // Each keeps its own viewBox, so resizing width/height scales the content.
+    var parsed = new DOMParser().parseFromString(svg_obj.svg, 'text/html');
+    var svg_images = parsed.querySelectorAll('svg');
+    var serializer = new XMLSerializer();
+    for (var i = 0; i < svg_images.length; i++) {
+      var myPablo = Pablo(serializer.serializeToString(svg_images[i]));
       var width = parseFloat(myPablo.attr('width'));
       var height = parseFloat(myPablo.attr('height'));
-      var imageRatio = height / width;
-      var newWidth = 2000;
-      var newHeight = Math.round(newWidth * imageRatio);
-      var newBoxWidth = Math.round(newWidth * 0.8);
-      var newBoxHeight = Math.round(newHeight * 0.8);
+      var newWidth = EXPORT_IMAGE_WIDTH_PX;
+      var newHeight = Math.round((newWidth * height) / width);
       myPablo.attr('width', newWidth + 'px');
       myPablo.attr('height', newHeight + 'px');
-      myPablo.attr('viewBox', '0 0 ' + newBoxWidth + ' ' + newBoxHeight);
-      myPablo.children('g').attr('transform', 'scale(2)');
 
       myPablo.download(imageType, filename, function (result) {
         if (result.error) {
