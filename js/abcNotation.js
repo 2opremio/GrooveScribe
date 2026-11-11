@@ -48,6 +48,41 @@ function testArrayOfArraysForEquality(array_of_arrays, test_index, test_value) {
   return true;
 }
 
+// abc2svg applies an accidental to the rest of its bar, so after a cross stick (^c) every
+// plain snare (c) in that bar would pick up the cross-stick X head. Mark those snares with
+// an explicit natural; the =c drum map keeps the natural sign from being drawn.
+// Skips !decorations!, "annotations" and header lines (V:, %%) and resets at each barline.
+function naturalizeSnaresAfterCrossStick(voiceString) {
+  var out = '';
+  var crossStickInBar = false;
+  var atLineStart = true;
+  for (var i = 0; i < voiceString.length; i++) {
+    var ch = voiceString[i];
+    if (atLineStart && (ch === '%' || voiceString.startsWith('V:', i))) {
+      var lineEnd = voiceString.indexOf('\n', i);
+      if (lineEnd < 0) lineEnd = voiceString.length - 1;
+      out += voiceString.slice(i, lineEnd + 1);
+      i = lineEnd;
+      continue;
+    }
+    atLineStart = ch === '\n';
+    if (ch === '!' || ch === '"') {
+      var close = voiceString.indexOf(ch, i + 1);
+      out += voiceString.slice(i, close + 1);
+      i = close;
+      continue;
+    }
+    if (ch === '|') crossStickInBar = false;
+    if (ch === 'c' && voiceString[i + 1] !== "'" && voiceString[i + 1] !== ',') {
+      var prev = voiceString[i - 1];
+      if (prev === '^') crossStickInBar = true;
+      else if (crossStickInBar && prev !== '=' && prev !== '_') ch = '=c';
+    }
+    out += ch;
+  }
+  return out;
+}
+
 function getABCforNote(note_array_of_arrays, start_index, end_of_group, scaler) {
   var ABC_String = '';
   var abcNoteStrings = {
@@ -476,6 +511,8 @@ function snare_HH_kick_ABC_for_triplets(
     }
   }
 
+  hh_snare_voice_string = naturalizeSnaresAfterCrossStick(hh_snare_voice_string);
+
   if (kick_stems_up)
     ABC_String += stickings_voice_string + post_voice_abc + hh_snare_voice_string + post_voice_abc;
   else
@@ -608,6 +645,8 @@ function snare_HH_kick_ABC_for_quads(
     }
   }
 
+  hh_snare_voice_string = naturalizeSnaresAfterCrossStick(hh_snare_voice_string);
+
   if (kick_stems_up)
     ABC_String += stickings_voice_string + post_voice_abc + hh_snare_voice_string + post_voice_abc;
   else
@@ -690,6 +729,7 @@ export function get_top_ABC_BoilerPlate(
     "%%map drum ^B' heads=Trihead print=A' % Ride Bell\n" +
     "%%map drum ^D' heads=Trihead print=g   % Cow Bell\n" +
     '%%map drum ^c heads=Xhead print=c  % Cross Stick\n' +
+    '%%map drum =c print=c  % Snare after a cross stick in the same bar\n' +
     '%%map drum ^d, heads=Xhead print=d,  % Foot Splash\n';
 
   //if(kick_stems_up)
@@ -713,7 +753,7 @@ export function get_top_ABC_BoilerPlate(
       'V:Hands stem=up \n' +
       '%%voicemap drum\n' +
       '"^Hi-Hat"^g4 "^Open"!open!^g4 ' +
-      '"^Crash"^c\'4 "^Stacker"^d\'4 "^Ride"^A\'4 "^Ride Bell"^B\'4 x2 "^Tom"e4 "^Tom"A4 "^Snare"c4 "^Buzz"!///!c4 "^Cross"^c4 "^Ghost  "!(.!!).!c4 "^Flam"{/c}c4  x10 ||\n' +
+      '"^Crash"^c\'4 "^Stacker"^d\'4 "^Ride"^A\'4 "^Ride Bell"^B\'4 x2 "^Tom"e4 "^Tom"A4 "^Snare"c4 "^Buzz"!///!c4 "^Cross"^c4 "^Ghost  "!(.!!).!=c4 "^Flam"{/=c}=c4  x10 ||\n' +
       'V:Feet stem=down \n' +
       '%%voicemap drum\n' +
       'x52 "^Kick"F4 "^HH foot"^d,4 x4 ||\n' +

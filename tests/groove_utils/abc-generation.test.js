@@ -133,6 +133,7 @@ describe('GrooveUtils ABC notation generation', () => {
           "%%map drum ^B' heads=Trihead print=A' % Ride Bell\n" +
           "%%map drum ^D' heads=Trihead print=g   % Cow Bell\n" +
           '%%map drum ^c heads=Xhead print=c  % Cross Stick\n' +
+          '%%map drum =c print=c  % Snare after a cross stick in the same bar\n' +
           '%%map drum ^d, heads=Xhead print=d,  % Foot Splash\n' +
           '%%staves (Stickings Hands Feet)\n' +
           'K:C clef=perc\n'
@@ -300,6 +301,39 @@ describe('GrooveUtils ABC notation generation', () => {
     });
   });
 
+  describe('snares after a cross stick', () => {
+    // abc2svg carries an accidental to the end of its bar, so a plain snare (c) after a
+    // cross stick (^c) would take the cross stick's X head unless written as a natural.
+    // the Hands voice body with !decorations! and "annotations" removed, leaving only notes
+    const snareVoice = (abc) =>
+      abc
+        .split('V:Hands')[1]
+        .split('%%voicemap drum\n')[1]
+        .split('V:Feet')[0]
+        .replace(/!.*?!|".*?"/g, '');
+
+    it('marks later snares in the same bar as naturals and resets at the next bar', () => {
+      for (const div of ['16', '12']) {
+        const bar = div === '12' ? 'x-o-g-f-O-o-' : 'x-o-x-o-g-f-O-o-';
+        const gd = gu.getGrooveDataFromUrlString(
+          `?TimeSig=4/4&Div=${div}&Measures=2&H=|${'-'.repeat(bar.length).repeat(2)}|&S=|${bar}|${'o' + '-'.repeat(bar.length - 1)}|&K=|${'-'.repeat(bar.length * 2)}|`
+        );
+        const [first, second] = snareVoice(gu.createABCFromGrooveData(gd, 900)).split('|');
+        expect(first).toContain('^c');
+        expect(first.match(/(?<![=^_])c(?![',])/g)).toBeNull();
+        expect(second).not.toContain('=c');
+        expect(second).toMatch(/(?<![=^_])c/);
+      }
+    });
+
+    it('leaves bars without a cross stick unchanged', () => {
+      const gd = gu.getGrooveDataFromUrlString(
+        '?TimeSig=4/4&Div=16&Measures=1&H=|----------------|&S=|o-g-f-O-o-------|&K=|----------------|'
+      );
+      expect(snareVoice(gu.createABCFromGrooveData(gd, 900))).not.toContain('=c');
+    });
+  });
+
   describe('createABCFromGrooveData (full pipeline: boilerplate + note body)', () => {
     it('produces an exact snapshot for a canonical straight 4/4 16th-note groove', () => {
       const gd = gu.getGrooveDataFromUrlString(
@@ -345,6 +379,7 @@ describe('GrooveUtils ABC notation generation', () => {
           "%%map drum ^B' heads=Trihead print=A' % Ride Bell\n" +
           "%%map drum ^D' heads=Trihead print=g   % Cow Bell\n" +
           '%%map drum ^c heads=Xhead print=c  % Cross Stick\n' +
+          '%%map drum =c print=c  % Snare after a cross stick in the same bar\n' +
           '%%map drum ^d, heads=Xhead print=d,  % Foot Splash\n' +
           '%%staves (Stickings Hands Feet)\n' +
           'K:C clef=perc\n' +
