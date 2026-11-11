@@ -5,6 +5,18 @@ const BOOTSTRAP_MAX_RETRIES = 20; // 10 seconds total
 const BUTTON_INJECT_RETRY_MS = 1000;
 const BUTTON_INJECT_MAX_RETRIES = 10; // 10 seconds total
 
+// GrooveWriter rewrites the URL with replaceState once the page loads, dropping the
+// coach's own params, so read them from the query string as it was when the page opened.
+const initialQuery = window.location.search;
+
+// Resolves once window 'load' has fired. This module's listener is registered after
+// js/main.js's, so it runs after GrooveWriter.runsOnPageLoad has built the player and
+// loaded the URL's groove.
+const pageLoaded = new Promise((resolve) => {
+  if (document.readyState === 'complete') resolve();
+  else window.addEventListener('load', resolve, { once: true });
+});
+
 /**
  * Bootstraps the Drum Coach and attaches it to the global window object
  */
@@ -29,10 +41,10 @@ async function bootstrap() {
 
   // Apply DrumMap URL param if present
   const utils = window.myGrooveWriter.myGrooveUtils;
-  const drumMapParam = utils.getQueryVariableFromURL('DrumMap', '');
+  const drumMapParam = utils.getQueryVariableFromString('DrumMap', '', initialQuery);
   if (drumMapParam) {
     if (drumMapParam === 'custom') {
-      const dmParam = utils.getQueryVariableFromURL('DM', '');
+      const dmParam = utils.getQueryVariableFromString('DM', '', initialQuery);
       if (dmParam) {
         const { decodeDrumMap } = await import('./data/DrumMapUtils.js');
         const { coachState } = await import('./state/State.js');
@@ -55,10 +67,11 @@ async function bootstrap() {
   addCoachToggleButton();
 
   // Auto-start coach mode if Mode=coach in URL
-  const mode = utils.getQueryVariableFromURL('Mode', '');
+  const mode = utils.getQueryVariableFromString('Mode', '', initialQuery);
   if (mode === 'coach') {
+    await pageLoaded;
     try {
-      controller.startSession({ autoPlay: false });
+      await controller.startSession({ autoPlay: false });
     } catch (e) {
       console.error('[Drum Coach] Auto-start failed:', e);
     }
