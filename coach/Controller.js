@@ -14,6 +14,9 @@ import { loadDrumMapPresets, getPresetMap, getPresetHihatCC } from './data/DrumM
 import { drumMapToRuntime, encodeDrumMap } from './data/DrumMapUtils.js';
 import { DrumMapDialog } from './ui/DrumMapDialog.js';
 
+// velocity given to hits simulated from the keyboard (k/s/h); a firm, non-accented hit
+const DEBUG_KEY_VELOCITY = 100;
+
 /**
  * Controller - Orchestrates the entire Drum Coach feature
  */
@@ -648,7 +651,8 @@ export class Controller {
       const drum = KEY_TO_DRUM[e.key];
       if (!drum) return;
       if (!this.isCoachingActive || !this.engine.isPlaying) return;
-      this.handleMidiHit(drum, performance.now(), 100);
+      // e.timeStamp is when the key went down, not when this handler got to run
+      this.handleMidiHit(drum, e.timeStamp, DEBUG_KEY_VELOCITY);
     });
   }
 

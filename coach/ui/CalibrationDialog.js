@@ -195,7 +195,9 @@ export class CalibrationDialog {
     // Ignore modifier keys and repeats
     if (e.repeat || e.key === 'Escape') return;
     e.preventDefault();
-    this._onTap(performance.now());
+    // the event's own timestamp is when the key went down; reading the clock here would
+    // add however long the page took to get to this handler
+    this._onTap(e.timeStamp);
   }
 
   _onTap(timestamp) {
