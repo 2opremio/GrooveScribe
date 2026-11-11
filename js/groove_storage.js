@@ -171,14 +171,6 @@ export function autosave(grooveQueryString) {
   }
 }
 
-export function getAutosave() {
-  try {
-    return localStorage.getItem(AUTOSAVE_KEY);
-  } catch (e) {
-    return null;
-  }
-}
-
 // ── Dirty state ─────────────────────────────────────────────
 
 export function setLastSaved(grooveQueryString) {

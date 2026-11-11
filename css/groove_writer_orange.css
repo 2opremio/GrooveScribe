@@ -1386,6 +1386,17 @@ input[type='checkbox']:not(:checked) + label {
   cursor: pointer;
 }
 
+/* ── Storage error banner ──────────────────────────────── */
+#storageErrorBanner {
+  display: none;
+  background: #c00;
+  color: #fff;
+  text-align: center;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
 /* ── Save button dirty state indicator ─────────────────── */
 #saveGrooveButton.saveGrooveDirty #saveGrooveIcon {
   color: var(--highlight-color);
