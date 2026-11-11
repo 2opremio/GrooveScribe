@@ -80,7 +80,6 @@ export class Controller {
     this.resultsDialog.inject();
     this.calibrationDialog.inject();
     this.drumMapDialog.inject();
-    this.renderer.init();
 
     // Update the drum mapping button label with the loaded preset name
     this._updateDrumMapLabel();
