@@ -14,6 +14,8 @@ const CLICK_DURATION_S = 0.03;
 // gain at 100% metronome volume; just under full scale, so the click can't clip
 const CLICK_MAX_GAIN = 0.9;
 const TIMING_STRIP_RANGE_MS = 80; // strip shows +/- this many ms
+// velocity given to a keyboard tap; one key press is the only tap on its beat
+const KEYBOARD_TAP_VELOCITY = 100;
 
 /**
  * CalibrationDialog - Tap-along latency calibration.
@@ -28,8 +30,11 @@ export class CalibrationDialog {
     this.container = null;
     this._audioCtx = null;
     this._active = false;
-    this._tapErrors = []; // raw signed errors for all taps (including warmup)
-    this._tapCount = 0;
+    this._tapErrors = []; // signed error of each tapped beat, in beat order (including warmup)
+    this._tapCount = 0; // beats that have a tap
+    // beat index -> {error, velocity, dot}: one tap per click, the loudest hit near it, so
+    // crosstalk and the soft extra hits a pad can fire around a stroke don't count as taps
+    this._tapsByBeat = new Map();
     this._resultMs = null; // calibration offset from the last completed run
     this._beatTimes = []; // scheduled click times in the performance.now() domain, before output delay
     this._schedulerTimer = null;
@@ -162,6 +167,7 @@ export class CalibrationDialog {
     this._showPhase('tapping');
     this._tapErrors = [];
     this._tapCount = 0;
+    this._tapsByBeat = new Map();
     this._beatTimes = [];
 
     // Clear any existing dots from a previous run
@@ -172,7 +178,7 @@ export class CalibrationDialog {
 
     // Hook MIDI input — save original handler, replace with ours
     this._originalMidiOnHit = this.midiHandler.onHit;
-    this.midiHandler.onHit = (drum, timestamp, velocity) => this._onTap(timestamp);
+    this.midiHandler.onHit = (drum, timestamp, velocity) => this._onTap(timestamp, velocity);
 
     // Hook keyboard input — any key counts as a tap
     document.addEventListener('keydown', this._onKeyDown);
@@ -205,10 +211,10 @@ export class CalibrationDialog {
     e.preventDefault();
     // the event's own timestamp is when the key went down; reading the clock here would
     // add however long the page took to get to this handler
-    this._onTap(e.timeStamp);
+    this._onTap(e.timeStamp, KEYBOARD_TAP_VELOCITY);
   }
 
-  _onTap(timestamp) {
+  _onTap(timestamp, velocity) {
     if (!this._active) return;
 
     // The browser's output delay is read at tap time, exactly as sessions read it, so the
@@ -216,48 +222,63 @@ export class CalibrationDialog {
     const outputDelay = this.latencyManager.outputDelayMs(this._audioCtx);
 
     // Find the nearest beat
-    let bestError = Infinity;
-    for (const beatTime of this._beatTimes) {
-      const error = timestamp - (beatTime + outputDelay);
-      if (Math.abs(error) < Math.abs(bestError)) {
-        bestError = error;
-      }
+    let beat = 0;
+    for (let i = 1; i < this._beatTimes.length; i++) {
+      const dist = (b) => Math.abs(timestamp - (this._beatTimes[b] + outputDelay));
+      if (dist(i) < dist(beat)) beat = i;
     }
+    const error = timestamp - (this._beatTimes[beat] + outputDelay);
 
-    this._tapCount++;
-    this._tapErrors.push(bestError);
+    const existing = this._tapsByBeat.get(beat);
+    if (existing) {
+      if (velocity <= existing.velocity) return;
+      existing.error = error;
+      existing.velocity = velocity;
+      this._placeDot(existing.dot, error);
+    } else {
+      const dot = this._addDot(this._tapCount < WARMUP_TAPS);
+      this._placeDot(dot, error);
+      this._tapsByBeat.set(beat, { error, velocity, dot });
+      this._flashBeatIndicator();
+    }
+    this._tapCount = this._tapsByBeat.size;
+    this._tapErrors = [...this._tapsByBeat.keys()]
+      .sort((a, b) => a - b)
+      .map((b) => this._tapsByBeat.get(b).error);
     this._updateDisplay();
 
-    // Flash the beat indicator
+    if (!existing && this._tapCount === TOTAL_TAPS) {
+      // a louder hit can still replace this beat's tap until the next beat is nearer
+      const beatWindowEnd = this._beatTimes[beat] + outputDelay + BEAT_INTERVAL_MS / 2;
+      setTimeout(() => this._finishTapping(), Math.max(0, beatWindowEnd - performance.now()));
+    }
+  }
+
+  _addDot(isWarmup) {
+    const strip = this.container.querySelector('#calib-timing-strip');
+    const dot = document.createElement('div');
+    dot.className = 'calib-strip-dot';
+    if (isWarmup) dot.classList.add('calib-strip-dot-warmup');
+    strip.appendChild(dot);
+    return dot;
+  }
+
+  _placeDot(dot, error) {
+    // 50% = center (0 error)
+    const clampedError = Math.max(-TIMING_STRIP_RANGE_MS, Math.min(TIMING_STRIP_RANGE_MS, error));
+    dot.style.left = `${50 + (clampedError / TIMING_STRIP_RANGE_MS) * 50}%`;
+  }
+
+  _flashBeatIndicator() {
     const indicator = this.container.querySelector('#calib-beat-indicator');
     indicator.classList.remove('calib-flash');
     void indicator.offsetWidth;
     indicator.classList.add('calib-flash');
-
-    if (this._tapCount >= TOTAL_TAPS) {
-      this._finishTapping();
-    }
   }
 
   _updateDisplay() {
     const counter = this.container.querySelector('#calib-beat-counter');
     counter.textContent = `${this._tapCount} / ${TOTAL_TAPS}`;
-
-    // Add dot to timing strip for this tap
-    if (this._tapCount > 0) {
-      const error = this._tapErrors[this._tapErrors.length - 1];
-      const strip = this.container.querySelector('#calib-timing-strip');
-      const dot = document.createElement('div');
-      dot.className = 'calib-strip-dot';
-      if (this._tapCount <= WARMUP_TAPS) {
-        dot.classList.add('calib-strip-dot-warmup');
-      }
-      // Position: 50% = center (0 error), map error to percentage
-      const clampedError = Math.max(-TIMING_STRIP_RANGE_MS, Math.min(TIMING_STRIP_RANGE_MS, error));
-      const pct = 50 + (clampedError / TIMING_STRIP_RANGE_MS) * 50;
-      dot.style.left = `${pct}%`;
-      strip.appendChild(dot);
-    }
 
     // Running offset (median of non-warmup taps)
     const offsetEl = this.container.querySelector('#calib-running-offset');
@@ -383,6 +404,7 @@ export class CalibrationDialog {
     this._stop();
     this._tapErrors = [];
     this._tapCount = 0;
+    this._tapsByBeat = new Map();
     this._beatTimes = [];
 
     // Clear timing strip dots
