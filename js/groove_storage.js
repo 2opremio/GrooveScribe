@@ -7,6 +7,9 @@ const AUTOSAVE_KEY = 'grooveScribe_autosave';
 let cachedData = null;
 let lastSavedGroove = null;
 
+// Tracks which saved groove is currently loaded (null if new/unsaved)
+let currentGrooveRef = null; // { category: "Saved", id: "groove_123" }
+
 // ── Server API ──────────────────────────────────────────────
 
 export function fetchFromServer(callback) {
@@ -71,10 +74,36 @@ export function addGroove(category, name, grooveQueryString, callback) {
     createdAt: Date.now(),
   };
 
+  currentGrooveRef = { category: category, id: id };
+
   var commitMsg = 'groove: save "' + name + '" in ' + category;
   saveToServer(commitMsg, function (err) {
     if (err) {
       console.error('Failed to save groove to server:', err);
+    }
+    if (callback) callback(err);
+  });
+}
+
+export function updateGroove(grooveQueryString, callback) {
+  if (!currentGrooveRef) {
+    if (callback) callback(new Error('No groove loaded to update'));
+    return;
+  }
+  var cat = currentGrooveRef.category;
+  var id = currentGrooveRef.id;
+  if (!cachedData || !cachedData.categories[cat] || !cachedData.categories[cat][id]) {
+    if (callback) callback(new Error('Groove reference is stale'));
+    return;
+  }
+
+  var name = cachedData.categories[cat][id].name;
+  cachedData.categories[cat][id].groove = grooveQueryString;
+
+  var commitMsg = 'groove: update "' + name + '" in ' + cat;
+  saveToServer(commitMsg, function (err) {
+    if (err) {
+      console.error('Failed to update groove on server:', err);
     }
     if (callback) callback(err);
   });
@@ -93,6 +122,15 @@ export function deleteGroove(category, grooveId, callback) {
   var name = cachedData.categories[category][grooveId].name;
   delete cachedData.categories[category][grooveId];
 
+  // Clear ref if we just deleted the currently loaded groove
+  if (
+    currentGrooveRef &&
+    currentGrooveRef.category === category &&
+    currentGrooveRef.id === grooveId
+  ) {
+    currentGrooveRef = null;
+  }
+
   // Remove empty categories
   if (Object.keys(cachedData.categories[category]).length === 0) {
     delete cachedData.categories[category];
@@ -109,6 +147,18 @@ export function deleteGroove(category, grooveId, callback) {
 
 export function getCachedData() {
   return cachedData;
+}
+
+export function setCurrentGrooveRef(category, id) {
+  currentGrooveRef = { category: category, id: id };
+}
+
+export function clearCurrentGrooveRef() {
+  currentGrooveRef = null;
+}
+
+export function getCurrentGrooveRef() {
+  return currentGrooveRef;
 }
 
 // ── localStorage auto-save ──────────────────────────────────
@@ -177,6 +227,10 @@ export function getUserGroovesAsHTML() {
       HTML += '<li class="grooveListLI savedGrooveLI">';
       HTML +=
         '<span class="savedGrooveName" onclick="myGrooveWriter.loadSavedGroove(\'' +
+        escapeJS(catName) +
+        "', '" +
+        escapeJS(gid) +
+        "', '" +
         escapeJS(groove.groove) +
         '\')">';
       HTML += escapeHTML(groove.name);
