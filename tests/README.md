@@ -150,8 +150,7 @@ entirely through the DOM. Two things make it testable:
   file download / navigation / print) asserted as "does not throw".
 
 Several real product bugs were found while writing these tests and are pinned as
-documented regression expectations (e.g. `metronomeOptionsMenuPopupClick("CountIn")`
-calls an undefined `setMetronomeCountIn`; `closeMeasureButtonClick` has no
+documented regression expectations (e.g. `closeMeasureButtonClick` has no
 lower-bound guard; the undo-stack dedup checks the wrong array). Search the test
 files for "bug" / "quirk".
 

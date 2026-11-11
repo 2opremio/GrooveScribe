@@ -890,7 +890,6 @@ function GrooveWriter() {
             'menuChecked',
             false
           );
-          root.myGrooveUtils.setMetronomeCountIn(false);
         } else {
           class_metronome_count_in_active = true;
           addOrRemoveKeywordFromClassById(
@@ -898,7 +897,6 @@ function GrooveWriter() {
             'menuChecked',
             true
           );
-          root.myGrooveUtils.setMetronomeCountIn(true);
         }
         break;
 
