@@ -155,16 +155,7 @@ export class Renderer {
       this.verticalStep = sniffedData.verticalStep;
     }
 
-    if (!context.bpm || !context.numBeats || !context.measures) {
-      console.error('[FeedbackRenderer] Invalid groove context:', context);
-      return;
-    }
-
-    const bpm = context.bpm;
-    const numBeats = context.numBeats;
-    const measures = context.measures;
-
-    const measureDurationMs = (60000 / bpm) * numBeats;
+    const { measures, measureDurationMs } = context;
     this.measureDurationMs = measureDurationMs;
     this.totalMeasures = measures;
     this.grooveContext.totalDurationMs = measureDurationMs * measures;

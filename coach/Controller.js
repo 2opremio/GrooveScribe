@@ -550,10 +550,8 @@ export class Controller {
     if (!metrics) return;
 
     const context = {
-      bpm: metrics.bpm,
-      numBeats: metrics.numBeats,
       measures: metrics.measures,
-      notesPerMeasure: metrics.notesPerMeasure,
+      measureDurationMs: metrics.measureDurationMs,
     };
 
     // Capture high-precision sniffer data from the imported instance

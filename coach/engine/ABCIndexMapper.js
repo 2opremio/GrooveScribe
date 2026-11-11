@@ -1,4 +1,6 @@
 import { DrumType, ABC_PITCH_TO_DRUM_TYPE } from './DrumConstants.js';
+import { getNoteScaler, isTripletDivisionFromNotesPerMeasure } from '../../js/musicMath.js';
+import { measureSlotTicks, ticksToMs } from '../../js/noteTiming.js';
 
 /**
  * ABCIndexMapper - Maps ABC notation tick positions to rendered note indices
@@ -127,31 +129,31 @@ export class ABCIndexMapper {
   buildTimeline(data, metrics) {
     if (!data || !metrics) return [];
 
-    const { msPerTick, totalTicks } = metrics;
+    const { noteTimeMs, totalTicks } = metrics;
     const timeline = [];
 
     for (let i = 0; i < totalTicks; i++) {
       // Hi-Hats & Cymbals
       if (data.hh_array[i]) {
         const type = this.resolveAbcDrumType(data.hh_array[i], 'hh', i);
-        if (type) timeline.push({ time: i * msPerTick, type, tickIndex: i });
+        if (type) timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
       }
       // Snare variants
       if (data.snare_array[i]) {
         const type = this.resolveAbcDrumType(data.snare_array[i], 'snare', i);
-        if (type) timeline.push({ time: i * msPerTick, type, tickIndex: i });
+        if (type) timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
       }
       // Kick and Foot HH
       if (data.kick_array[i]) {
         const type = this.resolveAbcDrumType(data.kick_array[i], 'kick', i);
-        if (type) timeline.push({ time: i * msPerTick, type, tickIndex: i });
+        if (type) timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
       }
       // Toms (Unified 4-tom array)
       if (data.toms_array) {
         data.toms_array.forEach((row, idx) => {
           if (row[i]) {
             const type = this.resolveAbcDrumType(row[i], `tom${idx}`, i);
-            if (type) timeline.push({ time: i * msPerTick, type, tickIndex: i });
+            if (type) timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
           }
         });
       }
@@ -220,8 +222,30 @@ export class ABCIndexMapper {
     }
 
     const totalTicks = notesPerMeasure * measures;
-    const msPerTick = ((60000 / bpm) * numBeats) / notesPerMeasure;
 
-    return { bpm, numBeats, measures, notesPerMeasure, totalTicks, msPerTick };
+    // Note times come from the same slot positions the MIDI file is built from, so the
+    // coach expects each note exactly when it plays (time signature, triplets and swing).
+    const scaler = getNoteScaler(notesPerMeasure, numBeats, data.noteValue);
+    const fullSizeNotes = notesPerMeasure * scaler;
+    const isTriplets = isTripletDivisionFromNotesPerMeasure(
+      fullSizeNotes,
+      numBeats,
+      data.noteValue
+    );
+    const slotTicks = measureSlotTicks(
+      fullSizeNotes,
+      data.timeDivision,
+      data.swingPercent / 100,
+      isTriplets
+    );
+    const measureTicks = slotTicks[fullSizeNotes];
+    const measureDurationMs = ticksToMs(measureTicks, bpm);
+    const noteTimeMs = (i) => {
+      const measure = Math.floor(i / notesPerMeasure);
+      const slot = (i % notesPerMeasure) * scaler;
+      return ticksToMs(measure * measureTicks + slotTicks[slot], bpm);
+    };
+
+    return { measures, notesPerMeasure, totalTicks, measureDurationMs, noteTimeMs };
   }
 }
