@@ -1,0 +1,200 @@
+// Client-side groove storage with server persistence.
+//
+// Manages saving/loading/deleting user grooves via the server API (server.js),
+// auto-saves to localStorage for crash protection, and tracks dirty state.
+
+const AUTOSAVE_KEY = 'grooveScribe_autosave';
+let cachedData = null;
+let lastSavedGroove = null;
+
+// ── Server API ──────────────────────────────────────────────
+
+export function fetchFromServer(callback) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/api/grooves', true);
+  xhr.onload = function () {
+    if (xhr.status === 200) {
+      try {
+        cachedData = JSON.parse(xhr.responseText);
+      } catch (e) {
+        console.error('Failed to parse grooves JSON:', e);
+        cachedData = { version: 1, categories: {} };
+      }
+    } else {
+      console.error('GET /api/grooves failed:', xhr.status);
+      cachedData = { version: 1, categories: {} };
+    }
+    if (callback) callback(cachedData);
+  };
+  xhr.onerror = function () {
+    console.error('GET /api/grooves network error');
+    cachedData = { version: 1, categories: {} };
+    if (callback) callback(cachedData);
+  };
+  xhr.send();
+}
+
+function saveToServer(commitMessage, callback) {
+  var payload = JSON.parse(JSON.stringify(cachedData));
+  payload._commitMessage = commitMessage;
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('PUT', '/api/grooves', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.onload = function () {
+    if (xhr.status === 200) {
+      if (callback) callback(null);
+    } else {
+      var msg = 'PUT /api/grooves failed: ' + xhr.status;
+      console.error(msg);
+      if (callback) callback(new Error(msg));
+    }
+  };
+  xhr.onerror = function () {
+    var msg = 'PUT /api/grooves network error';
+    console.error(msg);
+    if (callback) callback(new Error(msg));
+  };
+  xhr.send(JSON.stringify(payload));
+}
+
+// ── CRUD ────────────────────────────────────────────────────
+
+export function addGroove(category, name, grooveQueryString, callback) {
+  if (!cachedData) cachedData = { version: 1, categories: {} };
+  if (!cachedData.categories[category]) cachedData.categories[category] = {};
+
+  var id = 'groove_' + Date.now();
+  cachedData.categories[category][id] = {
+    name: name,
+    groove: grooveQueryString,
+    createdAt: Date.now(),
+  };
+
+  var commitMsg = 'groove: save "' + name + '" in ' + category;
+  saveToServer(commitMsg, function (err) {
+    if (err) {
+      console.error('Failed to save groove to server:', err);
+    }
+    if (callback) callback(err);
+  });
+}
+
+export function deleteGroove(category, grooveId, callback) {
+  if (
+    !cachedData ||
+    !cachedData.categories[category] ||
+    !cachedData.categories[category][grooveId]
+  ) {
+    if (callback) callback(new Error('Groove not found'));
+    return;
+  }
+
+  var name = cachedData.categories[category][grooveId].name;
+  delete cachedData.categories[category][grooveId];
+
+  // Remove empty categories
+  if (Object.keys(cachedData.categories[category]).length === 0) {
+    delete cachedData.categories[category];
+  }
+
+  var commitMsg = 'groove: delete "' + name + '" from ' + category;
+  saveToServer(commitMsg, function (err) {
+    if (err) {
+      console.error('Failed to delete groove on server:', err);
+    }
+    if (callback) callback(err);
+  });
+}
+
+export function getCachedData() {
+  return cachedData;
+}
+
+// ── localStorage auto-save ──────────────────────────────────
+
+export function autosave(grooveQueryString) {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, grooveQueryString);
+  } catch (e) {
+    // localStorage full or unavailable — not critical
+  }
+}
+
+export function getAutosave() {
+  try {
+    return localStorage.getItem(AUTOSAVE_KEY);
+  } catch (e) {
+    return null;
+  }
+}
+
+// ── Dirty state ─────────────────────────────────────────────
+
+export function setLastSaved(grooveQueryString) {
+  lastSavedGroove = grooveQueryString;
+}
+
+export function isDirty(currentGrooveQueryString) {
+  if (lastSavedGroove === null) return false;
+  return currentGrooveQueryString !== lastSavedGroove;
+}
+
+// ── HTML generation for groove dropdown ─────────────────────
+
+function escapeHTML(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeJS(str) {
+  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+export function getUserGroovesAsHTML() {
+  if (!cachedData || !cachedData.categories) return '';
+
+  var categoryNames = Object.keys(cachedData.categories);
+  if (categoryNames.length === 0) return '';
+
+  var HTML = '<ul class="grooveListUL">\n';
+
+  for (var ci = 0; ci < categoryNames.length; ci++) {
+    var catName = categoryNames[ci];
+    var groovesInCat = cachedData.categories[catName];
+    var grooveIds = Object.keys(groovesInCat);
+    if (grooveIds.length === 0) continue;
+
+    HTML += '<li class="grooveListHeaderLI">' + escapeHTML(catName) + '</li>\n';
+    HTML += '<ul class="grooveListUL">\n';
+
+    for (var gi = 0; gi < grooveIds.length; gi++) {
+      var gid = grooveIds[gi];
+      var groove = groovesInCat[gid];
+      HTML += '<li class="grooveListLI savedGrooveLI">';
+      HTML +=
+        '<span class="savedGrooveName" onclick="myGrooveWriter.loadSavedGroove(\'' +
+        escapeJS(groove.groove) +
+        '\')">';
+      HTML += escapeHTML(groove.name);
+      HTML += '</span>';
+      HTML +=
+        '<span class="savedGrooveDelete" onclick="event.stopPropagation(); myGrooveWriter.deleteSavedGroove(\'' +
+        escapeJS(catName) +
+        "', '" +
+        escapeJS(gid) +
+        '\');">';
+      HTML += '<i class="fa fa-times"></i>';
+      HTML += '</span>';
+      HTML += '</li>\n';
+    }
+
+    HTML += '</ul>\n';
+  }
+
+  HTML += '</ul>\n';
+  return HTML;
+}

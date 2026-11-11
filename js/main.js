@@ -75,6 +75,10 @@ fillContainer('measureContainer', gridHTML);
 
 fillContainer('grooveListWrapper', grooves.getGroovesAsHTML());
 
+// Saved user grooves are fetched from the server (server.js) and prepended to
+// the grooves menu once they arrive.
+myGrooveWriter.initGrooveStorage();
+
 // Initialize the notes/player once the page has fully loaded (matches the
 // original window.onload handler).
 window.addEventListener('load', function () {

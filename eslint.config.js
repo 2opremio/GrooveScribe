@@ -112,6 +112,7 @@ export default [
       'js/grooves.js',
       'js/groove_display.js',
       'js/main.js',
+      'js/groove_storage.js',
     ],
     languageOptions: {
       sourceType: 'module',
@@ -167,9 +168,9 @@ export default [
     },
   },
 
-  // Node build scripts (ES modules run by Node, e.g. the Capacitor web-dir builder).
+  // Node build scripts and the groove-storage server (ES modules run by Node).
   {
-    files: ['scripts/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'server.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
