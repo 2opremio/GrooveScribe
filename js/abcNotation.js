@@ -650,8 +650,6 @@ export function get_top_ABC_BoilerPlate(
 
   if (renderWidth < 400) renderWidth = 400; // min-width
   if (renderWidth > 3000) renderWidth = 3000; // max-width
-  // the width of the music is always 25% bigger than what we pass in.   Go figure.
-  renderWidth = Math.floor(renderWidth * 0.75);
 
   fullABC += 'L:1/' + 32 + '\n'; // 4/4 = 32,  6/8 = 64
 
@@ -673,14 +671,16 @@ export function get_top_ABC_BoilerPlate(
     '%%annotationfont calibri 16\n' +
     '%%infofont calibri 16\n' +
     '%%textfont calibri 16\n' +
-    '%%deco (. 0 a 5 1 1 "@-8,-3("\n' +
-    '%%deco ). 0 a 5 1 1 "@4,-3)"\n' +
     '%%beginsvg\n' +
     ' <defs>\n' +
     ' <path id="Xhead" d="m-3,-3 l6,6 m0,-6 l-6,6" class="stroke" style="stroke-width:1.2"/>\n' +
     ' <path id="Trihead" d="m-3,2 l 6,0 l-3,-6 l-3,6 l6,0" class="stroke" style="stroke-width:1.2"/>\n' +
+    ' <text id="ghost_lp" style="font:16px serif">(</text>\n' +
+    ' <text id="ghost_rp" style="font:16px serif">)</text>\n' +
     ' </defs>\n' +
     '%%endsvg\n' +
+    '%%deco (. 0 ghost_lp 5 1 1 "@-8,-3"\n' +
+    '%%deco ). 0 ghost_rp 5 1 1 "@4,-3"\n' +
     '%%map drum ^g heads=Xhead print=g       % Hi-Hat\n' +
     "%%map drum ^c' heads=Xhead print=c'   % Crash\n" +
     "%%map drum ^d' heads=Xhead print=d'   % Stacker\n" +

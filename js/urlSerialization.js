@@ -208,9 +208,11 @@ export function getGrooveDataFromUrlString(encodedURLData, config = {}) {
  *
  * @param {import('./grooveData.js').GrooveData} myGrooveData  The groove to serialize.
  * @param {string} [url_destination]  Optional base URL to prepend.
+ * @param {{coachMode?: boolean, coachDrumMapParam?: string}} [config]  Drum Coach
+ *   state: when coachMode is set the URL carries `Mode=coach` plus the drum-map params.
  * @returns {string}
  */
-export function getUrlStringFromGrooveData(myGrooveData, url_destination) {
+export function getUrlStringFromGrooveData(myGrooveData, url_destination, config = {}) {
   var fullURL = window.location.protocol + '//' + window.location.host + window.location.pathname;
 
   if (!url_destination) {
@@ -230,7 +232,10 @@ export function getUrlStringFromGrooveData(myGrooveData, url_destination) {
 
   if (myGrooveData.debugMode) fullURL += 'Debug=1&';
 
-  if (myGrooveData.viewMode) fullURL += 'Mode=view&';
+  if (config.coachMode) {
+    fullURL += 'Mode=coach&';
+    if (config.coachDrumMapParam) fullURL += config.coachDrumMapParam;
+  } else if (myGrooveData.viewMode) fullURL += 'Mode=view&';
 
   if (myGrooveData.grooveDBAuthoring) fullURL += 'GDB_Author=1&';
 

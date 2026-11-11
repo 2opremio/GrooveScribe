@@ -49,8 +49,8 @@ describe('GrooveUtils ABC notation generation', () => {
       expect(abc).toContain('L:1/32\n');
       // isPermutation === false -> stretchlast 1
       expect(abc).toContain('%%stretchlast 1\n');
-      // renderWidth 900 clamped to <=3000, then scaled by 0.75 -> 675px
-      expect(abc).toContain('%%pagewidth 675px\n');
+      // renderWidth 900 is within [400, 3000], so it passes through unchanged
+      expect(abc).toContain('%%pagewidth 900px\n');
       // the staves line is hard-coded to include Feet regardless of kick_stems_up
       // (the kick_stems_up branch that would omit "Feet" is dead/commented-out code)
       expect(abc).toContain('%%staves (Stickings Hands Feet)\n');
@@ -86,8 +86,8 @@ describe('GrooveUtils ABC notation generation', () => {
       expect(abc).not.toContain('P:');
       // isPermutation === true -> stretchlast 0
       expect(abc).toContain('%%stretchlast 0\n');
-      // renderWidth clamped up to the 400 minimum, then *0.75 = 300
-      expect(abc).toContain('%%pagewidth 300px\n');
+      // renderWidth clamped up to the 400 minimum
+      expect(abc).toContain('%%pagewidth 400px\n');
       // showLegend === false -> the string ends right after the K: header line,
       // with no V:Stickings/V:Hands/V:Feet legend block
       expect(abc.endsWith('K:C clef=perc\n')).toBe(true);
@@ -104,7 +104,7 @@ describe('GrooveUtils ABC notation generation', () => {
           '%%stretchlast 0\n' +
           '%%flatbeams 1\n' +
           '%%ornament up\n' +
-          '%%pagewidth 300px\n' +
+          '%%pagewidth 400px\n' +
           '%%leftmargin 0cm\n' +
           '%%rightmargin 0cm\n' +
           '%%topspace 10px\n' +
@@ -114,14 +114,16 @@ describe('GrooveUtils ABC notation generation', () => {
           '%%annotationfont calibri 16\n' +
           '%%infofont calibri 16\n' +
           '%%textfont calibri 16\n' +
-          '%%deco (. 0 a 5 1 1 "@-8,-3("\n' +
-          '%%deco ). 0 a 5 1 1 "@4,-3)"\n' +
           '%%beginsvg\n' +
           ' <defs>\n' +
           ' <path id="Xhead" d="m-3,-3 l6,6 m0,-6 l-6,6" class="stroke" style="stroke-width:1.2"/>\n' +
           ' <path id="Trihead" d="m-3,2 l 6,0 l-3,-6 l-3,6 l6,0" class="stroke" style="stroke-width:1.2"/>\n' +
+          ' <text id="ghost_lp" style="font:16px serif">(</text>\n' +
+          ' <text id="ghost_rp" style="font:16px serif">)</text>\n' +
           ' </defs>\n' +
           '%%endsvg\n' +
+          '%%deco (. 0 ghost_lp 5 1 1 "@-8,-3"\n' +
+          '%%deco ). 0 ghost_rp 5 1 1 "@4,-3"\n' +
           '%%map drum ^g heads=Xhead print=g       % Hi-Hat\n' +
           "%%map drum ^c' heads=Xhead print=c'   % Crash\n" +
           "%%map drum ^d' heads=Xhead print=d'   % Stacker\n" +
@@ -146,8 +148,7 @@ describe('GrooveUtils ABC notation generation', () => {
 
     it('clamps renderWidth at the 3000 maximum', () => {
       const abc = gu.get_top_ABC_BoilerPlate(false, '', '', '', false, false, true, 4, 4, 100000);
-      // 3000 * 0.75 = 2250
-      expect(abc).toContain('%%pagewidth 2250px\n');
+      expect(abc).toContain('%%pagewidth 3000px\n');
     });
   });
 
@@ -315,7 +316,7 @@ describe('GrooveUtils ABC notation generation', () => {
           '%%stretchlast 1\n' +
           '%%flatbeams 1\n' +
           '%%ornament up\n' +
-          '%%pagewidth 675px\n' +
+          '%%pagewidth 900px\n' +
           '%%leftmargin 0cm\n' +
           '%%rightmargin 0cm\n' +
           '%%topspace 10px\n' +
@@ -325,14 +326,16 @@ describe('GrooveUtils ABC notation generation', () => {
           '%%annotationfont calibri 16\n' +
           '%%infofont calibri 16\n' +
           '%%textfont calibri 16\n' +
-          '%%deco (. 0 a 5 1 1 "@-8,-3("\n' +
-          '%%deco ). 0 a 5 1 1 "@4,-3)"\n' +
           '%%beginsvg\n' +
           ' <defs>\n' +
           ' <path id="Xhead" d="m-3,-3 l6,6 m0,-6 l-6,6" class="stroke" style="stroke-width:1.2"/>\n' +
           ' <path id="Trihead" d="m-3,2 l 6,0 l-3,-6 l-3,6 l6,0" class="stroke" style="stroke-width:1.2"/>\n' +
+          ' <text id="ghost_lp" style="font:16px serif">(</text>\n' +
+          ' <text id="ghost_rp" style="font:16px serif">)</text>\n' +
           ' </defs>\n' +
           '%%endsvg\n' +
+          '%%deco (. 0 ghost_lp 5 1 1 "@-8,-3"\n' +
+          '%%deco ). 0 ghost_rp 5 1 1 "@4,-3"\n' +
           '%%map drum ^g heads=Xhead print=g       % Hi-Hat\n' +
           "%%map drum ^c' heads=Xhead print=c'   % Crash\n" +
           "%%map drum ^d' heads=Xhead print=d'   % Stacker\n" +

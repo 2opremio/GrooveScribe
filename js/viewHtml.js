@@ -208,7 +208,7 @@ export function buildStaffContainerHTML(baseindex, indexStartForNotes, ctx) {
     baseindex +
     '" onClick=\'myGrooveWriter.muteInstrument("hh", ' +
     baseindex +
-    ', false)\'><span class="fa-stack unmuteHHStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></div>';
+    ', false)\'><span class="fa-stack unmuteHHStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span></div>';
   newHTML += '<div class="end_note_space"></div>\n</div>\n';
 
   // Toms 1
@@ -246,7 +246,7 @@ export function buildStaffContainerHTML(baseindex, indexStartForNotes, ctx) {
     baseindex +
     '" onClick=\'myGrooveWriter.muteInstrument("tom1", ' +
     baseindex +
-    ', false)\'><span class="fa-stack unmuteStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span>';
+    ', false)\'><span class="fa-stack unmuteStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span></span>';
   newHTML += '<div class="end_note_space"></div>\n</div>\n';
 
   // Snare stuff
@@ -311,8 +311,8 @@ export function buildStaffContainerHTML(baseindex, indexStartForNotes, ctx) {
       '		<ellipse id="drag_hd" rx="4.1" ry="2.9" transform="rotate(-20)" class="drag_fill"></ellipse>' +
       '	</defs>' +
       '	<g id="note" transform="translate(-44 -35)">' +
-      '       <path class="fill" d="m51.81 38.34 l8.58 0.00v1.60l-8.58 0.00"></path>' +
-      '	    <path class="fill" d="m52.10 41.34 l8.00 0.00v1.60l-8.00 0.00"></path>' +
+      '       <path class="drag_fill" d="m51.81 38.34 l8.58 0.00v1.60l-8.58 0.00"></path>' +
+      '	    <path class="drag_fill" d="m52.10 41.34 l8.00 0.00v1.60l-8.00 0.00"></path>' +
       '		<path class="drag_stroke" d="m52.1 53.34v-15.00"></path>' +
       '		<use x="50.50" y="53.34" xlink:href="#drag_ghd"></use>' +
       '		<path class="drag_stroke" d="m49.50 49.34l8.00 -15.00"></path>' +
@@ -341,7 +341,7 @@ export function buildStaffContainerHTML(baseindex, indexStartForNotes, ctx) {
     baseindex +
     '" onClick=\'myGrooveWriter.muteInstrument("snare", ' +
     baseindex +
-    ', false)\'><span class="fa-stack unmuteStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span>';
+    ', false)\'><span class="fa-stack unmuteStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span></span>';
   newHTML += '<div class="end_note_space"></div>\n</div>\n';
 
   // Toms 4
@@ -379,7 +379,7 @@ export function buildStaffContainerHTML(baseindex, indexStartForNotes, ctx) {
     baseindex +
     '" onClick=\'myGrooveWriter.muteInstrument("tom4", ' +
     baseindex +
-    ', false)\'><span class="fa-stack unmuteStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span>';
+    ', false)\'><span class="fa-stack unmuteStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span></span>';
   newHTML += '<div class="end_note_space"></div>\n</div>\n';
 
   // Kick stuff
@@ -420,7 +420,7 @@ export function buildStaffContainerHTML(baseindex, indexStartForNotes, ctx) {
     baseindex +
     '" onClick=\'myGrooveWriter.muteInstrument("kick", ' +
     baseindex +
-    ', false)\'><span class="fa-stack unmuteStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span>';
+    ', false)\'><span class="fa-stack unmuteStack"><i class="fa fa-ban fa-stack-2x" style="color:red"></i><i class="fa fa-volume-down fa-stack-1x"></i></span></span>';
   newHTML += '<div class="end_note_space"></div>\n</div>\n';
 
   newHTML +=

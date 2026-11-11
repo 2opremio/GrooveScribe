@@ -7,18 +7,20 @@ import { installMidiGlobal } from '../helpers/legacyLoader.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// abc2svg-1.js is a single self-contained global `function Abc(user){...}`
+// abc2svg-1.js is a single self-contained global `abc2svg` namespace (renderer at `abc2svg.Abc`)
 // (no CommonJS/ESM exports). Loading it with `new Function` and installing the
-// result as `globalThis.Abc` is the same trick used in
+// result as `globalThis.abc2svg` is the same trick used in
 // tests/groove_utils/dom-and-highlight.test.js to exercise the real abc2svg
 // render path -- it's pure string/geometry computation with no DOM/canvas
 // dependency, so it works fine under jsdom.
-function installAbcGlobal() {
+function installAbc2svgGlobal() {
   const src = fs.readFileSync(path.resolve(here, '../../js/abc2svg-1.js'), 'utf8');
-  const factory = new Function(`${src}\n;return (typeof Abc !== 'undefined') ? Abc : undefined;`);
-  const AbcCtor = factory();
-  if (AbcCtor) globalThis.Abc = AbcCtor;
-  return AbcCtor;
+  const factory = new Function(
+    `${src}\n;return (typeof abc2svg !== 'undefined') ? abc2svg : undefined;`
+  );
+  const abc2svgLib = factory();
+  if (abc2svgLib) globalThis.abc2svg = abc2svgLib;
+  return abc2svgLib;
 }
 
 // Builds the popup fixture used by fillInFullURLInFullURLPopup / show_.. /
@@ -386,7 +388,7 @@ describe('GrooveWriter url-export (js/groove_writer.js)', () => {
 
   describe('PNGSaveAs / SVGSaveAs', () => {
     // Both call an internal downloadImages(imageType) which renders real ABC
-    // (via the vendored abc2svg `Abc` global -- installed below) and then
+    // (via the vendored abc2svg `abc2svg` global -- installed below) and then
     // hands the SVG off to the vendored Pablo library to resize/relabel and
     // trigger a real file download. Pablo itself does DOM tricks (a real
     // click-simulated <a download> and, for PNG, an offscreen <canvas>) that
@@ -428,7 +430,7 @@ describe('GrooveWriter url-export (js/groove_writer.js)', () => {
     }
 
     it('SVGSaveAs renders real ABC to SVG and calls Pablo(...).download("svg", "<title>svg", ...)', async () => {
-      installAbcGlobal();
+      installAbc2svgGlobal();
       const PabloFn = installPabloStub(true);
       const gw = await newGrooveWriter();
       buildGridDOM(gw, 1);
@@ -450,7 +452,7 @@ describe('GrooveWriter url-export (js/groove_writer.js)', () => {
     });
 
     it('SVGSaveAs falls back to "notation.svg" as the filename when no title is set', async () => {
-      installAbcGlobal();
+      installAbc2svgGlobal();
       const PabloFn = installPabloStub(true);
       const gw = await newGrooveWriter();
       buildGridDOM(gw, 1);
@@ -465,7 +467,7 @@ describe('GrooveWriter url-export (js/groove_writer.js)', () => {
     });
 
     it('PNGSaveAs calls Pablo.support.image.png(...) and, when acceptable, downloads as "png"', async () => {
-      installAbcGlobal();
+      installAbc2svgGlobal();
       const PabloFn = installPabloStub(true);
       const gw = await newGrooveWriter();
       buildGridDOM(gw, 1);
@@ -482,7 +484,7 @@ describe('GrooveWriter url-export (js/groove_writer.js)', () => {
     });
 
     it('PNGSaveAs alerts and skips the download when the browser cannot export PNG', async () => {
-      installAbcGlobal();
+      installAbc2svgGlobal();
       const PabloFn = installPabloStub(false);
       const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
       const gw = await newGrooveWriter();

@@ -18,13 +18,13 @@ import { fileURLToPath } from 'node:url';
 //   1. `constant_ABC_*` / `constant_OUR_MIDI_*` -- declared as top-level `var`s in
 //      groove_utils.js. In production both files are classic <script> tags
 //      sharing one global scope, so groove_writer.js can reference them directly.
-//   2. `Abc` -- the abc2svg-1.js rendering engine, also a classic-script global.
+//   2. `abc2svg` -- the abc2svg-1.js rendering engine, also a classic-script global.
 // Under the vitest legacy-module transform, each file becomes its own ES module,
 // so top-level `var`s no longer leak onto `globalThis` the way they do in a
 // browser. Without shimming them, these code paths throw ReferenceError purely
 // as an artifact of the test environment, not a real product bug. The same
 // pattern is already established in tests/groove_utils/dom-and-highlight.test.js
-// for `Abc`; we extend it here to the `constant_*` set so the real render path
+// for `abc2svg`; we extend it here to the `constant_*` set so the real render path
 // (not a mock) executes for the handlers that reach it.
 const __here = path.dirname(fileURLToPath(import.meta.url));
 const __grooveUtilsSrc = fs.readFileSync(path.resolve(__here, '../../js/groove_utils.js'), 'utf8');
@@ -38,11 +38,13 @@ while ((__m = __constRe.exec(__grooveUtilsSrc))) {
   }
 }
 
-let AbcCtor;
+let abc2svgLib;
 {
   const src = fs.readFileSync(path.resolve(__here, '../../js/abc2svg-1.js'), 'utf8');
-  const factory = new Function(`${src}\n;return (typeof Abc !== 'undefined') ? Abc : undefined;`);
-  AbcCtor = factory() || null;
+  const factory = new Function(
+    `${src}\n;return (typeof abc2svg !== 'undefined') ? abc2svg : undefined;`
+  );
+  abc2svgLib = factory() || null;
 }
 
 let gw;
@@ -134,7 +136,7 @@ function buildRenderPipelineFixtures() {
 
 beforeEach(async () => {
   document.body.innerHTML = '';
-  if (AbcCtor) globalThis.Abc = AbcCtor;
+  if (abc2svgLib) globalThis.abc2svg = abc2svgLib;
   gw = await newGrooveWriter();
   gw.refresh_ABC = vi.fn();
   gw.updateCurrentURL = vi.fn();

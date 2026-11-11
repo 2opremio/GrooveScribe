@@ -76,7 +76,7 @@ export default [
         // here (doing so would trip no-redeclare in the file that defines them).
         Midi: 'readonly',
         MIDI: 'readonly',
-        Abc: 'readonly',
+        abc2svg: 'readonly',
         Share: 'readonly',
         ShareButton: 'readonly',
         Pablo: 'readonly',
@@ -114,6 +114,22 @@ export default [
     ],
     languageOptions: {
       sourceType: 'module',
+    },
+  },
+
+  // Drum Coach: a self-contained native ES module tree loaded by index.html.
+  {
+    files: ['coach/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.browser,
+        MIDI: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }],
     },
   },
 

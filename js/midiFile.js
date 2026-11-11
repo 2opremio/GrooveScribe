@@ -79,16 +79,15 @@ export function MIDI_build_midi_url_count_in_track(gu, timeSigTop, timeSigBottom
     noteDelay = 64; // 8th notes over x/8 time
   else if (timeSigBottom == 16) noteDelay = 32; // 16th notes over x/16 time
 
-  // add count in
-  midiTrack.addNoteOn(9, constant_OUR_MIDI_METRONOME_1, 0, constant_OUR_MIDI_VELOCITY_NORMAL);
+  // add count in (the Drum Coach can override the click velocity via its volume slider)
+  var countInVelocity =
+    gu.metronomeVelocityOverride !== undefined
+      ? gu.metronomeVelocityOverride
+      : constant_OUR_MIDI_VELOCITY_NORMAL;
+  midiTrack.addNoteOn(9, constant_OUR_MIDI_METRONOME_1, 0, countInVelocity);
   midiTrack.addNoteOff(9, constant_OUR_MIDI_METRONOME_1, noteDelay);
   for (var i = 1; i < timeSigTop; i++) {
-    midiTrack.addNoteOn(
-      9,
-      constant_OUR_MIDI_METRONOME_NORMAL,
-      0,
-      constant_OUR_MIDI_VELOCITY_NORMAL
-    );
+    midiTrack.addNoteOn(9, constant_OUR_MIDI_METRONOME_NORMAL, 0, countInVelocity);
     midiTrack.addNoteOff(9, constant_OUR_MIDI_METRONOME_NORMAL, noteDelay);
   }
 
@@ -165,7 +164,10 @@ export function MIDI_from_HH_Snare_Kick_Arrays(
 
     // Metronome sounds.
     var metronome_note = false;
-    var metronome_velocity = constant_OUR_MIDI_VELOCITY_ACCENT;
+    var metronome_velocity =
+      gu.metronomeVelocityOverride !== undefined
+        ? gu.metronomeVelocityOverride
+        : constant_OUR_MIDI_VELOCITY_ACCENT;
     if (metronome_frequency > 0) {
       var quarterNoteFrequency = isTriplets ? 12 : 8;
       var eighthNoteFrequency = isTriplets ? 6 : 4;

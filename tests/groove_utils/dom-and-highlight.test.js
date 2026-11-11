@@ -595,36 +595,36 @@ describe('GrooveUtils.loadFullScreenGrooveScribe', () => {
 // ---------------------------------------------------------------------------
 // Optional: real abc2svg render path (renderABCtoSVG, line ~2154).
 //
-// abc2svg-1.js is a single self-contained global `function Abc(user){...}`
+// abc2svg-1.js is a single self-contained global `abc2svg` namespace (renderer at `abc2svg.Abc`)
 // declaration (no CommonJS/ESM exports), same shape as jsmidgen.js. We can
 // evaluate it out-of-module with `new Function` (as legacyLoader.js's
-// installMidiGlobal does for Midi) and install the resulting constructor as
-// `globalThis.Abc`, which groove_utils.js's renderABCtoSVG references as a
+// installMidiGlobal does for Midi) and install the resulting namespace as
+// `globalThis.abc2svg`, which groove_utils.js's renderABCtoSVG references as a
 // bare global. This actually works under jsdom -- abc2svg is pure
 // string/geometry computation with no DOM/canvas dependency -- so we exercise
 // the real render path rather than skipping it.
 describe('GrooveUtils.renderABCtoSVG (real abc2svg-1.js)', () => {
-  let AbcCtor;
+  let abc2svgLib;
 
   beforeEach(() => {
-    if (AbcCtor === undefined) {
+    if (abc2svgLib === undefined) {
       const here = path.dirname(fileURLToPath(import.meta.url));
       const src = fs.readFileSync(path.resolve(here, '../../js/abc2svg-1.js'), 'utf8');
       const factory = new Function(
-        `${src}\n;return (typeof Abc !== 'undefined') ? Abc : undefined;`
+        `${src}\n;return (typeof abc2svg !== 'undefined') ? abc2svg : undefined;`
       );
-      AbcCtor = factory() || null;
+      abc2svgLib = factory() || null;
     }
-    if (AbcCtor) globalThis.Abc = AbcCtor;
+    if (abc2svgLib) globalThis.abc2svg = abc2svgLib;
   });
 
   afterEach(() => {
-    delete globalThis.Abc;
+    delete globalThis.abc2svg;
   });
 
   it('renders a small tune to an SVG string with no errors', async () => {
-    if (!AbcCtor) {
-      // Environment couldn't provide the Abc global; skip gracefully rather
+    if (!abc2svgLib) {
+      // Environment couldn't provide the abc2svg global; skip gracefully rather
       // than force a false pass.
       return;
     }
@@ -635,6 +635,6 @@ describe('GrooveUtils.renderABCtoSVG (real abc2svg-1.js)', () => {
     expect(result.error_html).toBe('');
     expect(result.svg.length).toBeGreaterThan(0);
     expect(result.svg).toContain('<svg');
-    expect(result.svg).toContain('abc2s'); // abc2svg's own <title> marker
+    expect(result.svg).toMatch(/viewBox="0 0 [0-9.]+ [0-9.]+"/); // sized score, not an empty shell
   });
 });

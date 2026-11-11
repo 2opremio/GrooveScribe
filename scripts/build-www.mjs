@@ -26,6 +26,7 @@ const ITEMS = [
   'soundfont',
   'images',
   'font-awesome',
+  'coach',
 ];
 
 // Every listed item is a required runtime asset. Fail loudly if any is missing

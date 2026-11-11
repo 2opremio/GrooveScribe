@@ -395,7 +395,7 @@ describe('GrooveWriter view & lifecycle', () => {
     //    globalThis by reading the real source and evaluating each
     //    declaration's RHS (values copied verbatim from production, not
     //    invented).
-    // 2. myGrooveUtils.renderABCtoSVG needs the `Abc` global (abc2svg-1.js).
+    // 2. myGrooveUtils.renderABCtoSVG needs the `abc2svg` global (abc2svg-1.js).
     //    Since displayNewSVG itself is already covered directly above, here
     //    we stub renderABCtoSVG (a GrooveUtils method, not part of this
     //    file's surface) rather than also loading abc2svg.
