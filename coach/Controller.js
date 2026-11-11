@@ -162,10 +162,14 @@ export class Controller {
     const originalStopEvent = utils.midiEventCallbacks.stopEvent;
     const originalRepeatCallback = utils.repeatCallback;
 
+    // Both hooks run right after MIDI.js has scheduled the audio from "now", so the time is
+    // read first: anything done before reading it would make the coach's clock start late.
+
     // Intercept play event
     utils.midiEventCallbacks.playEvent = (root) => {
+      const scheduledAt = performance.now();
       if (originalPlayEvent) originalPlayEvent(root);
-      if (this.isCoachingActive) this._onPlaybackStart();
+      if (this.isCoachingActive) this._onPlaybackStart(scheduledAt);
     };
 
     // Intercept stop event
@@ -176,15 +180,17 @@ export class Controller {
 
     // Intercept repeat callback for multi-repetition sessions
     utils.repeatCallback = () => {
+      const scheduledAt = performance.now();
       if (originalRepeatCallback) originalRepeatCallback();
-      if (this.isCoachingActive) this._onRepeat();
+      if (this.isCoachingActive) this._onRepeat(scheduledAt);
     };
   }
 
   /**
    * Called when MIDI playback starts - synchronizes timing and prepares renderer
+   * @param {number} scheduledAt - performance.now() when the audio was scheduled to start
    */
-  _onPlaybackStart() {
+  _onPlaybackStart(scheduledAt) {
     this._refreshAbcMapping(); // Map instruments to staff indices
 
     // Ensure sniffer is hooked to the engine and has processed the current ABC
@@ -207,7 +213,7 @@ export class Controller {
     // ensuring it's cleared before any rushing hits arrive.
     const totalMeasures = this.renderer.totalMeasures;
     const measureDurationMs = this.renderer.measureDurationMs;
-    this.sessionStartTime = performance.now() - (totalMeasures - 1) * measureDurationMs;
+    this.sessionStartTime = scheduledAt - (totalMeasures - 1) * measureDurationMs;
 
     // Start engine AFTER back-dating so engine relTime matches
     // controller hitTimeMs (both use the same sessionStartTime).
@@ -243,8 +249,9 @@ export class Controller {
 
   /**
    * Called at the end of each repetition in multi-repetition mode
+   * @param {number} scheduledAt - performance.now() when the next pass was scheduled to start
    */
-  _onRepeat() {
+  _onRepeat(scheduledAt) {
     this.currentRepetition++;
 
     if (coachState.mode === 'performance' && this.currentRepetition >= coachState.reps) {
@@ -257,7 +264,7 @@ export class Controller {
     // No back-dating: _onPlaybackStart back-dates sessionStartTime to
     // simulate the count-in as the groove's last measure, but repeats
     // start at groove time 0 with no count-in.
-    this.sessionStartTime = performance.now();
+    this.sessionStartTime = scheduledAt;
     this.engine.start(this.sessionStartTime);
     this.renderer.scheduleMeasureClearing(0);
 
