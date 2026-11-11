@@ -4,7 +4,7 @@ import { evaluateHit } from './TimingEvaluator.js';
 // Timing thresholds (ms) for matching incoming MIDI hits to expected notes
 const GRACE_NOTE_EARLY_LIMIT_MS = 20; // A grace hit can be up to this many ms late
 const GRACE_NOTE_MATCH_WINDOW_MS = 100; // Total window around expected time for grace matching
-const NORMAL_HIT_MATCH_WINDOW_MS = 150; // Max distance from expected note before counting as extra
+export const NORMAL_HIT_MATCH_WINDOW_MS = 150; // Max distance from expected note before counting as extra
 
 // The furthest (in ms) a note can be from the hit time and still be matchable.
 // Used for cursor advancement (skipping old notes) and scan termination.
@@ -135,6 +135,24 @@ export class Engine {
       return { absDiff, isGraceNote: false };
     }
     return null;
+  }
+
+  /**
+   * Distance from a hit to the nearest note it could be, at the current latency.
+   * @param {string} drum - Normalized drum name
+   * @param {number} relativeHitTime - Hit time relative to the pass start (ms)
+   * @param {boolean} includeMatched - Also consider notes already hit in this pass
+   * @returns {number} ms to the nearest candidate note, Infinity if there is none
+   */
+  nearestNoteDistance(drum, relativeHitTime, includeMatched) {
+    const latency = this.latencyMs();
+    let nearest = Infinity;
+    for (const note of this.noteTimeline) {
+      if (!includeMatched && note.matched) continue;
+      if (!this._isTypeMatch(drum, note.type)) continue;
+      nearest = Math.min(nearest, Math.abs(relativeHitTime - (note.time + latency)));
+    }
+    return nearest;
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Engine } from './engine/Engine.js';
+import { Engine, NORMAL_HIT_MATCH_WINDOW_MS } from './engine/Engine.js';
 import { MidiInputHandler } from './engine/MidiInputHandler.js';
 import { LatencyManager } from './engine/LatencyManager.js';
 import { ABCIndexMapper } from './engine/ABCIndexMapper.js';
@@ -53,6 +53,7 @@ export class Controller {
     this.sessionStartTime = 0;
     this.currentRepetition = 0;
     this.countInPlaying = false; // the count-in runs before the first graded pass
+    this.nextPassHits = []; // hits waiting for the next pass to start; see _fitsNextPass
   }
 
   /**
@@ -271,6 +272,11 @@ export class Controller {
     this.engine.start(this.sessionStartTime);
     this.renderer.scheduleMeasureClearing(0);
 
+    // grade the hits that arrived for this pass before it started
+    const waiting = this.nextPassHits;
+    this.nextPassHits = [];
+    for (const hit of waiting) this.handleMidiHit(hit.drum, hit.timestamp, hit.velocity);
+
     // Rendering was enabled at M0 barline during count-in.
     // Re-enable here for subsequent repeats (idempotent).
     this.renderer.enableRendering();
@@ -319,6 +325,7 @@ export class Controller {
       // 3. Activate coaching mode
       this.isCoachingActive = true;
       this.currentRepetition = 0;
+      this.nextPassHits = [];
 
       // 3a. Apply metronome volume override (percentage → MIDI velocity 0-127)
       const metVelocity = Math.round((coachState.metronomeVolume * 127) / 100);
@@ -506,8 +513,12 @@ export class Controller {
    * Route incoming MIDI drum hits to the engine and renderer
    */
   handleMidiHit(drum, timestamp, velocity) {
-    if (!this.engine.isPlaying) return;
     if (velocity < coachState.minHitVelocity) return;
+    if ((this.engine.isPlaying || this.countInPlaying) && this._fitsNextPass(drum, timestamp)) {
+      this.nextPassHits.push({ drum, timestamp, velocity });
+      return;
+    }
+    if (!this.engine.isPlaying) return;
 
     // Create evaluation
     const evaluation = this.engine.handleMidiHit(drum, timestamp);
@@ -772,6 +783,24 @@ export class Controller {
       return `DrumMap=${coachState.drumMapPreset}&`;
     }
     return '';
+  }
+
+  /**
+   * Whether a hit belongs to the pass that hasn't started yet.
+   *
+   * A pass starts when MIDI.js reports the loop repeating, as it schedules the next pass's
+   * audio. With a small or negative total latency the player's beat-1 hit is due before
+   * that report, so it arrives while the previous pass is still current. A hit that fits
+   * the next pass's notes better than the current pass's waits for it (in _onRepeat).
+   */
+  _fitsNextPass(drum, timestamp) {
+    const passMs = this.renderer.totalMeasures * this.renderer.measureDurationMs;
+    const relativeHitTime = timestamp - this.sessionStartTime;
+    const toNextPass = this.engine.nearestNoteDistance(drum, relativeHitTime - passMs, true);
+    if (toNextPass > NORMAL_HIT_MATCH_WINDOW_MS) return false;
+    // the count-in has no notes of its own to compete with
+    if (this.countInPlaying) return true;
+    return toNextPass < this.engine.nearestNoteDistance(drum, relativeHitTime, false);
   }
 
   /**
