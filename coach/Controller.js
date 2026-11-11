@@ -120,8 +120,8 @@ export class Controller {
     // Inject debug grooves into the Grooves menu when debug is enabled
     if (coachState.showDebugGrid) {
       // this._injectDebugGrooves(); // Disabled for PR
-      this._initDebugHotkeys();
     }
+    this._initDebugHotkeys();
 
     // Debug grid is controlled by coachState.showDebugGrid constant in feedback/Renderer.js
 
@@ -634,7 +634,7 @@ export class Controller {
   }
 
   /**
-   * Register keyboard shortcuts for simulating drum hits (debug only).
+   * Register keyboard shortcuts for simulating drum hits, active while the debug grid is on.
    * k = kick, s = snare, h = closed hi-hat.
    * Calls the same handleMidiHit pipeline as real MIDI input.
    */
@@ -650,6 +650,7 @@ export class Controller {
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
+      if (!coachState.showDebugGrid) return;
       const drum = KEY_TO_DRUM[e.key];
       if (!drum) return;
       if (!this.isCoachingActive || !this.engine.isPlaying) return;
