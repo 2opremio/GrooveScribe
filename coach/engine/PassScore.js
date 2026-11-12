@@ -125,18 +125,14 @@ export function isBetter(a, b) {
 /**
  * One word for how a session went.
  *  - clean: meets the goal
- *  - solid: no mistakes, but short of the goal's targets
- *  - getting-there: mistakes on at most fewMistakesPercent of the notes
- *  - keep-at-it: more mistakes than that
+ *  - solid: within the goal's mistakes, but short of its timing targets
+ *  - keep-at-it: more mistakes than the goal allows
  * @param {Score} score
  * @param {Goal} goal
- * @param {number} fewMistakesPercent  Mistakes, in percent of the notes, that still count as few.
- * @returns {'clean' | 'solid' | 'getting-there' | 'keep-at-it'}
+ * @returns {'clean' | 'solid' | 'keep-at-it'}
  */
-export function verdict(score, goal, fewMistakesPercent) {
-  if (meetsGoal(score, goal)) return 'clean';
-  const mistakes = mistakeCount(score);
-  if (mistakes === 0) return 'solid';
-  const notes = noteCount(score);
-  return mistakes * PERCENT <= fewMistakesPercent * notes ? 'getting-there' : 'keep-at-it';
+export function verdict(score, goal) {
+  const checks = goalChecks(score, goal);
+  if (Object.values(checks).every(Boolean)) return 'clean';
+  return checks.mistakes ? 'solid' : 'keep-at-it';
 }

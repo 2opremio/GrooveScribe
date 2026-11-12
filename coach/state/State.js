@@ -22,16 +22,17 @@ const DEFAULTS = {
   drumMapCustomHihatCC: null,
   drumMapConfigured: false,
   showDebugGrid: false,
+  showAdvancedSettings: false, // the settings dialog shows its advanced options
   metronomeVolume: 100,
   startWithSolo: true,
   calibrationHitRule: 'loudest',
   minHitVelocity: 0, // 0 = no hit is ignored for being soft
   autoBpm: false, // in practice mode, raise the tempo after passes that meet the goal
   autoBpmPasses: 1, // passes in a row that must meet the goal before the tempo rises
+  autoBpmStep: 5, // bpm the tempo rises by each time
   goalMinPerfectPercent: 50, // blue notes, in percent of the notes played, at least
   goalMaxClosePercent: 10, // yellow notes, in percent of the notes played, at most
   goalMaxMistakesPercent: 3, // missed notes and stray hits, in percent of the notes played, at most
-  fewMistakesPercent: 5, // missed notes and stray hits, in percent of the notes, that count as few
 };
 
 function percentOrKeep(value, current, name) {
@@ -191,6 +192,28 @@ export class StateManager {
     this._data.autoBpmPasses = value;
   }
 
+  get showAdvancedSettings() {
+    return this._data.showAdvancedSettings;
+  }
+
+  set showAdvancedSettings(value) {
+    this._data.showAdvancedSettings = Boolean(value);
+  }
+
+  // AutoBpmStep: bpm the tempo rises by each time
+  get autoBpmStep() {
+    return this._data.autoBpmStep;
+  }
+
+  set autoBpmStep(value) {
+    value = Math.floor(Number(value));
+    if (Number.isNaN(value) || value < 1) {
+      console.warn(`[State] Invalid autoBpmStep '${value}', keeping '${this._data.autoBpmStep}'`);
+      return;
+    }
+    this._data.autoBpmStep = value;
+  }
+
   get goalMinPerfectPercent() {
     return this._data.goalMinPerfectPercent;
   }
@@ -224,18 +247,6 @@ export class StateManager {
       value,
       this._data.goalMaxMistakesPercent,
       'goalMaxMistakesPercent'
-    );
-  }
-
-  get fewMistakesPercent() {
-    return this._data.fewMistakesPercent;
-  }
-
-  set fewMistakesPercent(value) {
-    this._data.fewMistakesPercent = percentOrKeep(
-      value,
-      this._data.fewMistakesPercent,
-      'fewMistakesPercent'
     );
   }
 
