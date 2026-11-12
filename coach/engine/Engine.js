@@ -123,6 +123,21 @@ export class Engine {
   }
 
   /**
+   * How early or late the graded hits of the current pass were, typically: the median of
+   * their timing errors. Negative is early.
+   * @returns {number|null} ms, or null before any hit is graded
+   */
+  passTimingOffset() {
+    const errors = this.results
+      .filter((res) => res.isMatch && !res.isGraceNote)
+      .map((res) => res.timingError)
+      .sort((a, b) => a - b);
+    if (errors.length === 0) return null;
+    const mid = Math.floor(errors.length / 2);
+    return errors.length % 2 === 1 ? errors[mid] : (errors[mid - 1] + errors[mid]) / 2;
+  }
+
+  /**
    * Stop the coaching session
    */
   stop() {

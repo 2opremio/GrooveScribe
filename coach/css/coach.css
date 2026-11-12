@@ -1073,6 +1073,24 @@
   color: #ff5a5a;
   margin-top: 2px;
 }
+.coach-score-offset {
+  margin-top: 2px;
+  color: #aaa;
+}
+.coach-score-recenter {
+  margin-left: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--highlight-color);
+  border-radius: 3px;
+  background: transparent;
+  color: #9fd0f0;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.coach-score-recentered {
+  color: #7fd88f;
+}
 .coach-score-goal {
   margin-top: 8px;
   padding-top: 6px;
