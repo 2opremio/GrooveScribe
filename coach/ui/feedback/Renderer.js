@@ -89,6 +89,7 @@ export class Renderer {
     // played, it numbers each play of a measure, and every mark belongs to one play.
     this._pass = -1;
     this._clearPass = 0; // the pass whose barline crossings the clearer is following
+    this.repeatsPerBar = 1; // times each measure plays before the next one
     this._playedMeasure = null; // measure of the pass the playline was last in, as played
     this.clearedMeasures = new Set();
 
@@ -175,9 +176,11 @@ export class Renderer {
       this.verticalStep = sniffedData.verticalStep;
     }
 
-    const { measures, measureDurationMs } = context;
+    const { measures, measureDurationMs, repeatsPerBar } = context;
     this.measureDurationMs = measureDurationMs;
     this.totalMeasures = measures;
+    this.repeatsPerBar = repeatsPerBar;
+    // the drawing works in the time of the notation, which shows each measure once
     this.grooveContext.totalDurationMs = measureDurationMs * measures;
     this.clearedMeasures = new Set();
 
@@ -225,8 +228,13 @@ export class Renderer {
           // a different abcIndex than _refreshAbcMapping does).
           const sniffedGraces = system.chords.filter((n) => n.isGrace);
           let graceIdx = 0;
+          // a repeated measure's notes are drawn once, at their first play
+          const drawn = new Set();
 
           for (const note of timeline) {
+            const key = `${note.tickIndex}:${note.type}:${!!note.isGrace}`;
+            if (drawn.has(key)) continue;
+            drawn.add(key);
             let sniffed;
             if (note.isGrace) {
               // Match Nth timeline grace → Nth sniffed grace
@@ -376,7 +384,8 @@ export class Renderer {
    * Draw a stray hit: one outside every grading window, or with no note to grade it against.
    * It goes where it landed in time, on the line of the drum that was hit.
    *
-   * Except across the loop to the groove's start: a hit meant for the first notes after the jump lands, in time, at the end of the
+   * Except across a jump back (a repeat of the same measure, or the loop to the groove's
+   * start): a hit meant for the first notes after the jump lands, in time, at the end of the
    * play before it, which the jump is about to clear. It's drawn by the note it was meant
    * for instead, shifted by how early it was, and belongs to that note's play.
    * @param {number} playedTimeMs - the hit's time in the pass
@@ -444,6 +453,11 @@ export class Renderer {
     this._clearer.clearMeasure(0, this._playAt(0));
   }
 
+  /** @returns {number} plays of a measure in one pass, repeats included */
+  get _playsPerPass() {
+    return this.totalMeasures * this.repeatsPerBar;
+  }
+
   /**
    * The play of a measure that a time of the current pass falls in, numbered across passes.
    * A time before the pass started falls in the previous pass's last play.
@@ -458,7 +472,7 @@ export class Renderer {
 
   /** The play, numbered across passes, of a measure of the current pass, as played. */
   _playOfPlayedMeasure(playedMeasure) {
-    return this._pass * this.totalMeasures + playedMeasure;
+    return this._pass * this._playsPerPass + playedMeasure;
   }
 
   /**
@@ -469,10 +483,15 @@ export class Renderer {
     return play < this._clearer.keptFrom(this._measureOfPlay(play));
   }
 
+  /** Whether the playline is on the last play of the measure it's in. */
+  _onLastRepeat() {
+    return this._playedMeasure % this.repeatsPerBar === this.repeatsPerBar - 1;
+  }
+
   /** @returns {number} the measure of the notation a play shows */
   _measureOfPlay(play) {
-    const measures = this.totalMeasures;
-    return ((play % measures) + measures) % measures;
+    const plays = this._playsPerPass;
+    return Math.floor((((play % plays) + plays) % plays) / this.repeatsPerBar);
   }
 
   /**
@@ -480,13 +499,13 @@ export class Renderer {
    * to the pass they were scheduled in; measure 0's comes at that pass's end.
    */
   _nextFirstPlayOf(measureIndex) {
-    if (measureIndex === 0) return (this._clearPass + 1) * this.totalMeasures;
-    return this._clearPass * this.totalMeasures + measureIndex;
+    if (measureIndex === 0) return (this._clearPass + 1) * this._playsPerPass;
+    return this._clearPass * this._playsPerPass + measureIndex * this.repeatsPerBar;
   }
 
-  /** @returns {number} how long one pass plays, in ms */
+  /** @returns {number} how long one pass plays, every repeat of every measure, in ms */
   get passDurationMs() {
-    return this.measureDurationMs * this.totalMeasures;
+    return this.measureDurationMs * this.totalMeasures * this.repeatsPerBar;
   }
 
   /**
@@ -500,20 +519,28 @@ export class Renderer {
     const md = this.measureDurationMs;
     const playedMeasure = Math.floor((playedTimeMs + FLOAT_TOLERANCE_MS) / md);
     const intoMeasureMs = Math.max(0, playedTimeMs - playedMeasure * md);
-    return playedMeasure * md + intoMeasureMs;
+    return Math.floor(playedMeasure / this.repeatsPerBar) * md + intoMeasureMs;
   }
 
   /**
    * When the playline moves on to another play of a measure, that measure's marks from
    * earlier plays go. Marks already drawn for the new play stay, however early they came.
+   * On a repeat of the same measure the playline also jumps back to its start: restart the
+   * interpolation there.
    * @param {number} playedTimeMs - time since the pass started
+   * @param {number} shownTimeMs - the same time in the notation
    */
-  _followPlays(playedTimeMs) {
+  _followRepeats(playedTimeMs, shownTimeMs) {
     const playedMeasure = Math.floor(playedTimeMs / this.measureDurationMs);
     const previous = this._playedMeasure;
     this._playedMeasure = playedMeasure;
     if (previous === null || playedMeasure === previous) return;
-    this._clearer.clearMeasure(playedMeasure, this._playOfPlayedMeasure(playedMeasure));
+    const measure = Math.floor(playedMeasure / this.repeatsPerBar);
+    this._clearer.clearMeasure(measure, this._playOfPlayedMeasure(playedMeasure));
+    if (playedMeasure % this.repeatsPerBar === 0) return; // a new measure, not a repeat
+
+    this._interpolator.cursor = 0;
+    this._clearer.schedule(shownTimeMs);
   }
 
   /**
@@ -845,14 +872,18 @@ export class Renderer {
     if (!this._playLineGetTime) return; // guard against rAF/stop race
     const playedTimeMs = this._playLineGetTime();
     const timeMs = this._shownTimeMs(playedTimeMs);
-    this._followPlays(playedTimeMs);
+    this._followRepeats(playedTimeMs, timeMs);
 
     // --- Threshold-based clearing ---
-    this._clearer.tick(
-      timeMs,
-      (t) => this._getMeasureIndex(t),
-      (m) => this._nextFirstPlayOf(m)
-    );
+    // The next measure is cleared ahead only while its turn is coming: on the last play of
+    // the current measure, not on an earlier repeat of it.
+    if (this._onLastRepeat()) {
+      this._clearer.tick(
+        timeMs,
+        (t) => this._getMeasureIndex(t),
+        (m) => this._nextFirstPlayOf(m)
+      );
+    }
 
     // Enable rendering (playline + circles) at the actual M0 barline
     // time — NOT at the CLEAR_AHEAD early trigger which is only for

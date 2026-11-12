@@ -673,7 +673,8 @@ export function get_top_ABC_BoilerPlate(
   kick_stems_up,
   timeSigTop,
   timeSigBottom,
-  renderWidth
+  renderWidth,
+  repeatsPerBar
 ) {
   // boiler plate
   var fullABC = '%abc\n%%fullsvg _' + gu.grooveUtilsUniqueIndex + '\nX:6\n';
@@ -687,6 +688,9 @@ export function get_top_ABC_BoilerPlate(
     fullABC += 'C: ' + tuneAuthor + '\n';
     fullABC += '%%musicspace 20px\n'; // add some more space
   }
+
+  // a second title line is the subtitle, under the title
+  if (repeatsPerBar > 1) fullABC += 'T: Each bar \u00d7' + repeatsPerBar + '\n';
 
   if (renderWidth < 400) renderWidth = 400; // min-width
   if (renderWidth > 3000) renderWidth = 3000; // max-width
@@ -898,7 +902,8 @@ export function createABCFromGrooveData(gu, myGrooveData, renderWidth) {
     myGrooveData.kickStemsUp,
     myGrooveData.numBeats,
     myGrooveData.noteValue,
-    renderWidth
+    renderWidth,
+    myGrooveData.repeatsPerBar
   );
 
   fullABC += gu.create_ABC_from_snare_HH_kick_arrays(

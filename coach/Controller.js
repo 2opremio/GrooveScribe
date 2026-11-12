@@ -410,6 +410,7 @@ export class Controller {
       d.noteValue,
       d.timeDivision,
       d.numberOfMeasures,
+      d.repeatsPerBar,
       d.swingPercent,
       d.hh_array,
       d.snare_array,
@@ -767,6 +768,7 @@ export class Controller {
 
     const context = {
       measures: metrics.measures,
+      repeatsPerBar: metrics.repeatsPerBar,
       measureDurationMs: metrics.measureDurationMs,
     };
 

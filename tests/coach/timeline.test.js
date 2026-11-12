@@ -21,7 +21,16 @@ describe('Drum Coach note timeline', () => {
     gu = await newGrooveUtils();
   });
 
-  it.each(allGrooves.map((g) => [g.name, g.url]))(
+  // a groove that plays each of its measures several times in a row
+  const repeatedBars = {
+    name: 'repeated bars',
+    url:
+      '?TimeSig=4/4&Div=16&Tempo=90&Measures=2&Repeats=3&Swing=20' +
+      '&H=|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|&S=|----o-------o---|--o-----o-----o-|' +
+      '&K=|o------o--o---o-|o---o-o---o-o---|',
+  };
+
+  it.each([...allGrooves, repeatedBars].map((g) => [g.name, g.url]))(
     'expects every note of %s exactly when the MIDI plays a note',
     (name, url) => {
       const data = gu.getGrooveDataFromUrlString(url);
@@ -43,5 +52,12 @@ describe('Drum Coach note timeline', () => {
     );
     // 120 quarter notes per minute: an eighth is 250 ms
     expect(mapper.getGrooveMetrics(data).measureDurationMs).toBe(1500);
+  });
+
+  it('expects a repeated measure as many times as the MIDI plays it', () => {
+    const data = gu.getGrooveDataFromUrlString(repeatedBars.url);
+    const timeline = mapper.buildTimeline(data, mapper.getGrooveMetrics(data));
+    const midiNoteCount = noteOns(gu.create_MIDIURLFromGrooveData(data, 0)).length;
+    expect(timeline).toHaveLength(midiNoteCount);
   });
 });

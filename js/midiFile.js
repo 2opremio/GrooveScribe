@@ -483,20 +483,22 @@ export function create_MIDIURLFromGrooveData(gu, myGrooveData, MIDI_type) {
       );
     }
 
-    gu.MIDI_from_HH_Snare_Kick_Arrays(
-      midiTrack,
-      FullNoteHHArray.slice(measure_notes * measureIndex, measure_notes * (measureIndex + 1)),
-      FullNoteSnareArray.slice(measure_notes * measureIndex, measure_notes * (measureIndex + 1)),
-      FullNoteKickArray.slice(measure_notes * measureIndex, measure_notes * (measureIndex + 1)),
-      FullNoteTomsArray,
-      MIDI_type,
-      myGrooveData.metronomeFrequency,
-      measure_notes,
-      myGrooveData.timeDivision,
-      swing_percentage,
-      myGrooveData.numBeats,
-      myGrooveData.noteValue
-    );
+    for (var repeat = 0; repeat < myGrooveData.repeatsPerBar; repeat++) {
+      gu.MIDI_from_HH_Snare_Kick_Arrays(
+        midiTrack,
+        FullNoteHHArray.slice(measure_notes * measureIndex, measure_notes * (measureIndex + 1)),
+        FullNoteSnareArray.slice(measure_notes * measureIndex, measure_notes * (measureIndex + 1)),
+        FullNoteKickArray.slice(measure_notes * measureIndex, measure_notes * (measureIndex + 1)),
+        FullNoteTomsArray,
+        MIDI_type,
+        myGrooveData.metronomeFrequency,
+        measure_notes,
+        myGrooveData.timeDivision,
+        swing_percentage,
+        myGrooveData.numBeats,
+        myGrooveData.noteValue
+      );
+    }
   }
 
   var midi_url = 'data:audio/midi;base64,' + btoa(midiFile.toBytes());

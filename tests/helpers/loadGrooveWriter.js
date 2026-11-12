@@ -78,7 +78,8 @@ export function buildFullPageDOM(gw, measures = 1) {
     '<div id="timeSigLabel"></div>' +
     subdivisions +
     `<input id="tempoInput${idx}"><span id="tempoTextField${idx}"></span>` +
-    `<input id="swingInput${idx}"><span id="swingOutput${idx}"></span>`;
+    `<input id="swingInput${idx}"><span id="swingOutput${idx}"></span>` +
+    `<input id="repeatsTextField${idx}">`;
   document.body.appendChild(extra);
 
   // Avoid pulling in abc2svg: stub the SVG renderer the writer calls.

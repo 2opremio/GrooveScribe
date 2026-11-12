@@ -109,6 +109,20 @@ describe('MIDI note timing', () => {
     );
   });
 
+  it('plays each measure the repeats count before moving to the next', () => {
+    const notes = midiFor(
+      '?TimeSig=4/4&Div=16&Tempo=120&Measures=2&Repeats=3' +
+        '&H=|x---------------|----------------|&K=|----------------|o---------------|'
+    );
+    const measure = TICKS_PER_QUARTER * 4;
+    expect(ticksOf(notes, constant_OUR_MIDI_HIHAT_NORMAL)).toEqual([0, measure, 2 * measure]);
+    expect(ticksOf(notes, constant_OUR_MIDI_KICK_NORMAL)).toEqual([
+      3 * measure,
+      4 * measure,
+      5 * measure,
+    ]);
+  });
+
   it('clicks the count-in on each beat, starting at the first tick', () => {
     const fourFour = noteOns(gu.MIDI_build_midi_url_count_in_track(4, 4));
     expect(fourFour.map((n) => n.tick)).toEqual([0, 128, 256, 384]);

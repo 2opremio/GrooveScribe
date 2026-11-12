@@ -192,6 +192,13 @@ export function getGrooveDataFromUrlString(encodedURLData, config = {}) {
   if (isNaN(myGrooveData.tempo) || myGrooveData.tempo < 20 || myGrooveData.tempo > 400)
     myGrooveData.tempo = constant_DEFAULT_TEMPO;
 
+  myGrooveData.repeatsPerBar = parseInt(
+    getQueryVariableFromString('repeats', 1, encodedURLData),
+    10
+  );
+  if (isNaN(myGrooveData.repeatsPerBar) || myGrooveData.repeatsPerBar < 1)
+    myGrooveData.repeatsPerBar = 1;
+
   myGrooveData.swingPercent = parseInt(getQueryVariableFromString('swing', 0, encodedURLData), 10);
   if (
     isNaN(myGrooveData.swingPercent) ||
@@ -257,6 +264,8 @@ export function getUrlStringFromGrooveData(myGrooveData, url_destination, config
 
   // # of measures
   fullURL += '&Measures=' + myGrooveData.numberOfMeasures;
+
+  if (myGrooveData.repeatsPerBar > 1) fullURL += '&Repeats=' + myGrooveData.repeatsPerBar;
 
   // # metronome setting
   if (myGrooveData.metronomeFrequency !== 0) {

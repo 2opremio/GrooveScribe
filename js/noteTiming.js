@@ -54,3 +54,17 @@ export function measureSlotTicks(numNotes, numNotesForSwing, swingFraction, isTr
 export function ticksToMs(ticks, tempo) {
   return (ticks * MS_PER_MINUTE) / (tempo * MIDI_TICKS_PER_QUARTER);
 }
+
+/**
+ * Where in the notation a playback position falls when each measure plays several times
+ * in a row: the notation shows each measure once.
+ *
+ * @param {number} playedMeasures  Position in measures played since the pass started,
+ *   fractional within the current measure.
+ * @param {number} repeatsPerBar  How many times each measure plays before the next one.
+ * @returns {number} the same position in measures of the notation
+ */
+export function shownMeasurePosition(playedMeasures, repeatsPerBar) {
+  const measure = Math.floor(playedMeasures);
+  return Math.floor(measure / repeatsPerBar) + (playedMeasures - measure);
+}

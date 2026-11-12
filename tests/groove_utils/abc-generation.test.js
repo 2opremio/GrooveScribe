@@ -33,7 +33,8 @@ describe('GrooveUtils ABC notation generation', () => {
         true, // kick_stems_up
         4,
         4, // timeSigTop/Bottom
-        900 // renderWidth
+        900, // renderWidth
+        1 // repeatsPerBar
       );
 
       // header basics
@@ -75,7 +76,8 @@ describe('GrooveUtils ABC notation generation', () => {
         false, // kick_stems_up (unused by this function - see below)
         6,
         8, // timeSigTop/Bottom
-        100 // renderWidth (below the 400 minimum)
+        100, // renderWidth (below the 400 minimum)
+        1 // repeatsPerBar
       );
 
       expect(abc).toContain('M:6/8\n');
@@ -142,13 +144,25 @@ describe('GrooveUtils ABC notation generation', () => {
 
     it('the isTriplets and kick_stems_up parameters have no effect on the output (dead parameters)', () => {
       // Every argument identical except isTriplets/kick_stems_up flipped -> identical string.
-      const a = gu.get_top_ABC_BoilerPlate(false, 'T', 'A', 'C', false, false, false, 4, 4, 900);
-      const b = gu.get_top_ABC_BoilerPlate(false, 'T', 'A', 'C', false, true, true, 4, 4, 900);
+      const a = gu.get_top_ABC_BoilerPlate(false, 'T', 'A', 'C', false, false, false, 4, 4, 900, 1);
+      const b = gu.get_top_ABC_BoilerPlate(false, 'T', 'A', 'C', false, true, true, 4, 4, 900, 1);
       expect(a).toBe(b);
     });
 
     it('clamps renderWidth at the 3000 maximum', () => {
-      const abc = gu.get_top_ABC_BoilerPlate(false, '', '', '', false, false, true, 4, 4, 100000);
+      const abc = gu.get_top_ABC_BoilerPlate(
+        false,
+        '',
+        '',
+        '',
+        false,
+        false,
+        true,
+        4,
+        4,
+        100000,
+        1
+      );
       expect(abc).toContain('%%pagewidth 3000px\n');
     });
   });

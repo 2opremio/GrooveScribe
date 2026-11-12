@@ -60,6 +60,7 @@ import {
   is_touch_device as _is_touch_device,
 } from './browserInfo.js';
 import { createGrooveData } from './grooveData.js';
+import { shownMeasurePosition } from './noteTiming.js';
 import {
   getQueryVariableFromString as _getQueryVariableFromString,
   getGrooveDataFromUrlString as _urlParse,
@@ -153,6 +154,9 @@ function GrooveUtils() {
   root.isMIDIPaused = false;
   root.shouldMIDIRepeat = true;
   root.swingIsEnabled = false;
+  root.repeatsPerBar = 1; // how many times each measure plays before the next one
+  // measures of the loaded MIDI track, as shown in the notation, and how many times each plays
+  var loadedMidiLayout = { measures: 1, repeatsPerBar: 1 };
   root.grooveUtilsUniqueIndex = global_num_GrooveUtilsCreated;
 
   // metronome options
@@ -167,6 +171,7 @@ function GrooveUtils() {
   root.noteCallback = null; //function triggered when a note is played
   root.playEventCallback = null; //triggered when the play button is pressed
   root.repeatCallback = null; //triggered when a groove is going to be repeated
+  root.repeatsChangeCallback = null; //triggered when the repeats per bar change.  ARG1 is the new count
   root.tempoChangeCallback = null; //triggered when the tempo changes.  ARG1 is the new Tempo integer (needs to be very fast, it can get called a lot of times from the slider)
 
   root.visible_context_menu = false; // a single context menu can be visible at a time.
@@ -570,7 +575,8 @@ function GrooveUtils() {
     kick_stems_up,
     timeSigTop,
     timeSigBottom,
-    renderWidth
+    renderWidth,
+    repeatsPerBar
   ) {
     return _get_top_ABC_BoilerPlate(
       root,
@@ -583,7 +589,8 @@ function GrooveUtils() {
       kick_stems_up,
       timeSigTop,
       timeSigBottom,
-      renderWidth
+      renderWidth,
+      repeatsPerBar
     );
   };
 
@@ -968,8 +975,12 @@ function GrooveUtils() {
       if (root.myGrooveData) {
         root.myGrooveData.tempo = root.getTempo();
         root.myGrooveData.swingPercent = root.getSwing();
+        root.myGrooveData.repeatsPerBar = root.getRepeatsPerBar();
         var midiURL = root.create_MIDIURLFromGrooveData(root.myGrooveData);
-        root.loadMIDIFromURL(midiURL);
+        root.loadMIDIFromURL(midiURL, {
+          measures: root.myGrooveData.numberOfMeasures,
+          repeatsPerBar: root.myGrooveData.repeatsPerBar,
+        });
         root.midiEventCallbacks.noteHasChangedSinceLastDataLoad = false;
       } else {
         console.log("can't load midi song.   myGrooveData is empty");
@@ -1077,7 +1088,13 @@ function GrooveUtils() {
     return _create_MIDIURLFromGrooveData(root, myGrooveData, MIDI_type);
   };
 
-  root.loadMIDIFromURL = function (midiURL) {
+  /**
+   * @param {string} midiURL
+   * @param {{measures: number, repeatsPerBar: number}} layout  Measures of the track as the
+   *   notation shows them, and how many times each plays in a row, for note highlighting.
+   */
+  root.loadMIDIFromURL = function (midiURL, layout) {
+    loadedMidiLayout = layout;
     MIDI.Player.timeWarp = 1; // speed the song is played back
     MIDI.Player.BPM = root.getTempo();
     MIDI.Player.loadFile(midiURL, midiLoaderCallback());
@@ -1274,6 +1291,13 @@ function GrooveUtils() {
       //class_midi_note_num = 0;
       root.lastMidiTimeUpdate = -1;
     }
+    // the notation shows each measure once however many times it plays
+    var playedMeasures =
+      percentComplete * loadedMidiLayout.measures * loadedMidiLayout.repeatsPerBar;
+    var shownComplete =
+      shownMeasurePosition(playedMeasures, loadedMidiLayout.repeatsPerBar) /
+      loadedMidiLayout.measures;
+
     if (data.now == data.end) {
       // at the end of a song
       root.midiEventCallbacks.notePlaying(root.midiEventCallbacks.classRoot, 'complete', 1);
@@ -1355,9 +1379,9 @@ function GrooveUtils() {
         root.midiEventCallbacks.notePlaying(
           root.midiEventCallbacks.classRoot,
           note_type,
-          percentComplete
+          shownComplete
         );
-        root.highlightNoteInABCSVGFromPercentComplete(percentComplete);
+        root.highlightNoteInABCSVGFromPercentComplete(shownComplete);
         if (root.noteCallback) {
           root.noteCallback(note_type);
         }
@@ -1564,6 +1588,28 @@ function GrooveUtils() {
     root.swingUpdateText(swingAmount); // update the output
   };
 
+  root.getRepeatsPerBar = function () {
+    return root.repeatsPerBar;
+  };
+
+  root.setRepeatsPerBar = function (repeats) {
+    root.repeatsPerBar = repeats;
+    document.getElementById('repeatsTextField' + root.grooveUtilsUniqueIndex).value = repeats;
+    root.midiNoteHasChanged();
+  };
+
+  // onChange handler of the repeats field: a count that isn't a whole number of at least
+  // one is rejected and the field shows the current count again
+  root.repeatsUpdateFromTextField = function (event) {
+    var repeats = Number(event.target.value);
+    if (!Number.isInteger(repeats) || repeats < 1) {
+      event.target.value = root.repeatsPerBar;
+      return;
+    }
+    root.setRepeatsPerBar(repeats);
+    if (root.repeatsChangeCallback) root.repeatsChangeCallback(repeats);
+  };
+
   root.swingUpdateEvent = function (event) {
     if (root.swingIsEnabled === false) {
       root.setSwingSlider(0);
@@ -1740,6 +1786,10 @@ function GrooveUtils() {
       '" id="tempoInput' +
       root.grooveUtilsUniqueIndex +
       '" list="tempoSettings">' +
+      '				<span class="repeatsLabel" title="Times each bar plays before the next">REPEATS</span>' +
+      '				<input type="number" min="1" step="1" class="repeatsTextField" id="repeatsTextField' +
+      root.grooveUtilsUniqueIndex +
+      '" value="1"></input>' +
       '			</div>' +
       '			<div class="swingRow">' +
       '				<span class="swingLabel">SWING</span>' +
@@ -1790,6 +1840,11 @@ function GrooveUtils() {
     html_element = document.getElementById('tempoTextField' + root.grooveUtilsUniqueIndex);
     if (html_element) {
       html_element.addEventListener('change', root.tempoUpdateFromTextField, false);
+    }
+
+    html_element = document.getElementById('repeatsTextField' + root.grooveUtilsUniqueIndex);
+    if (html_element) {
+      html_element.addEventListener('change', root.repeatsUpdateFromTextField, false);
     }
 
     html_element = document.getElementById('swingInput' + root.grooveUtilsUniqueIndex);
