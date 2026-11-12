@@ -36,6 +36,7 @@ const DEFAULTS = {
   autoBpmPasses: 1, // passes in a row that must meet the goal before the tempo rises
   goalMinPerfectPercent: 50, // blue notes, in percent of the notes played, at least
   goalMaxClosePercent: 10, // yellow notes, in percent of the notes played, at most
+  goalMaxMistakesPercent: 3, // missed notes and stray hits, in percent of the notes played, at most
   fewMistakesPercent: 5, // missed notes and stray hits, in percent of the notes, that count as few
 };
 
@@ -220,6 +221,18 @@ export class StateManager {
     );
   }
 
+  get goalMaxMistakesPercent() {
+    return this._data.goalMaxMistakesPercent;
+  }
+
+  set goalMaxMistakesPercent(value) {
+    this._data.goalMaxMistakesPercent = percentOrKeep(
+      value,
+      this._data.goalMaxMistakesPercent,
+      'goalMaxMistakesPercent'
+    );
+  }
+
   get fewMistakesPercent() {
     return this._data.fewMistakesPercent;
   }
@@ -237,6 +250,7 @@ export class StateManager {
     return {
       minPerfectPercent: this.goalMinPerfectPercent,
       maxClosePercent: this.goalMaxClosePercent,
+      maxMistakesPercent: this.goalMaxMistakesPercent,
     };
   }
 

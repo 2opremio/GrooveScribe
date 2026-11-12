@@ -109,14 +109,16 @@ export class Engine {
   /**
    * How the current pass has gone so far: graded hits, stray hits, and the notes known
    * to be missed. Flam grace notes are part of their flam and aren't counted on their own.
+   * A stray hit that was an attempt at a note later missed is that note's miss, not a second
+   * mistake; see _isOwnMistake.
    * @returns {import('./PassScore.js').Score}
    */
   passScore() {
     const score = emptyScore();
     for (const res of this.results) {
       if (res.isGraceNote) continue;
-      if (res.tier === 'extra') score.stray++;
-      else score[res.tier]++;
+      if (res.tier !== 'extra') score[res.tier]++;
+      else if (this._isOwnMistake(res)) score.stray++;
     }
     score.missed = this.noteTimeline.filter((n) => n.missed).length;
     return score;
@@ -135,6 +137,16 @@ export class Engine {
     if (errors.length === 0) return null;
     const mid = Math.floor(errors.length / 2);
     return errors.length % 2 === 1 ? errors[mid] : (errors[mid - 1] + errors[mid]) / 2;
+  }
+
+  /**
+   * Whether a stray hit is a mistake of its own: one with no note in reach, or an extra hit
+   * next to a note that was hit after all. Next to a note still open it isn't counted yet;
+   * if that note ends up missed, the miss is the mistake.
+   */
+  _isOwnMistake(stray) {
+    if (stray.nearestNoteIndex === undefined) return true;
+    return this.noteTimeline[stray.nearestNoteIndex].matched;
   }
 
   /**

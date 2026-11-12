@@ -9,7 +9,7 @@ import {
   verdict,
 } from '../../coach/engine/PassScore.js';
 
-const GOAL = { minPerfectPercent: 50, maxClosePercent: 10 };
+const GOAL = { minPerfectPercent: 50, maxClosePercent: 10, maxMistakesPercent: 2 };
 const FEW_MISTAKES_PERCENT = 5;
 const score = (fields) => ({ ...emptyScore(), ...fields });
 
@@ -22,9 +22,11 @@ describe('Drum Coach pass goal', () => {
     expect(meetsGoal(score({ perfect: 20 }), GOAL)).toBe(true);
   });
 
-  it('is not met with a single missed note or a single stray hit', () => {
-    expect(meetsGoal(score({ perfect: 100, missed: 1 }), GOAL)).toBe(false);
-    expect(meetsGoal(score({ perfect: 100, stray: 1 }), GOAL)).toBe(false);
+  it('allows mistakes, missed notes and stray hits together, up to their share of the notes', () => {
+    // 100 notes: 2 mistakes are 2%, 3 are over
+    expect(meetsGoal(score({ perfect: 99, missed: 1, stray: 1 }), GOAL)).toBe(true);
+    expect(meetsGoal(score({ perfect: 98, missed: 2, stray: 1 }), GOAL)).toBe(false);
+    expect(meetsGoal(score({ perfect: 97, missed: 3 }), GOAL)).toBe(false);
   });
 
   it('is not met with too little blue or too much yellow', () => {

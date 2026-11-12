@@ -1,4 +1,4 @@
-import { tierPercentages } from '../engine/PassScore.js';
+import { mistakeCount, tierPercentages } from '../engine/PassScore.js';
 
 /**
  * ScorePanel - The scores under the coach bar while coaching: this pass so far, the last
@@ -51,7 +51,7 @@ export class ScorePanel {
    * @param {import('../engine/PassScore.js').Score|null} view.best
    * @param {Object|null} view.goal - null when auto BPM is off
    * @param {number} view.goal.nextTempo
-   * @param {{perfect: boolean, close: boolean, missed: boolean, stray: boolean}|null} view.goal.checks
+   * @param {{perfect: boolean, close: boolean, mistakes: boolean}|null} view.goal.checks
    *   null until the pass has started
    * @param {import('../engine/PassScore.js').Goal} view.goal.targets
    * @param {import('../engine/PassScore.js').Score|null} view.goal.score - this pass so far
@@ -117,13 +117,14 @@ function goalHtml(goal) {
     item(checks && checks.perfect, `blue ${goal.targets.minPerfectPercent}%+`) +
     item(checks && checks.close, `yellow ${goal.targets.maxClosePercent}% or less`) +
     item(
-      checks && checks.missed,
-      checks && !checks.missed ? `${score.missed} missed` : 'none missed'
-    ) +
-    item(checks && checks.stray, checks && !checks.stray ? strayText(score.stray) : 'no stray hits')
+      checks && checks.mistakes,
+      checks
+        ? `${mistakesText(mistakeCount(score))} (${goal.targets.maxMistakesPercent}% max)`
+        : `mistakes ${goal.targets.maxMistakesPercent}% or less`
+    )
   );
 }
 
-function strayText(count) {
-  return count === 1 ? '1 stray hit' : `${count} stray hits`;
+function mistakesText(count) {
+  return count === 1 ? '1 mistake' : `${count} mistakes`;
 }
