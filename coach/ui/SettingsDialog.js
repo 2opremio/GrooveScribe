@@ -1,4 +1,4 @@
-import { coachState } from '../state/State.js';
+import { coachState, TOLERANCE_WINDOWS } from '../state/State.js';
 
 /**
  * SettingsDialog - Manages the settings UI
@@ -6,6 +6,7 @@ import { coachState } from '../state/State.js';
 export class SettingsDialog {
   constructor() {
     this.container = null;
+    this._mode = null; // the mode selected in the dialog, saved on Start
   }
 
   inject() {
@@ -14,121 +15,109 @@ export class SettingsDialog {
     const dialog = document.createElement('div');
     dialog.id = 'coachSettingsDialog';
     dialog.innerHTML = `
-      <h2>Drum Coach Settings</h2>
-      
-      <div class="coach-setting-row">
-        <label>Coach Mode</label>
-        <select id="coach-mode-select">
-          <option value="practice">Practice (Infinite)</option>
-          <option value="performance">Performance (Scored)</option>
-        </select>
-      </div>
-      
-      <div id="performance-options" style="display: none;">
-        <div class="coach-setting-row">
-          <label>Repetitions</label>
-          <input type="number" id="coach-reps-input" min="2" max="16" value="4">
-        </div>
-        <div class="coach-setting-row">
-          <label>Few Mistakes Up To</label>
-          <span class="coach-latency-group">
-            <input type="number" id="coach-few-mistakes-input" min="0" max="100" step="1"> % of notes
-          </span>
-        </div>
+      <div class="coach-settings-head"><h2>Drum Coach</h2></div>
+      <div class="coach-settings-grid">
+        <section class="coach-settings-card mode">
+          <h3><i class="fa fa-repeat"></i>Mode</h3>
+          <div class="coach-settings-seg" id="coach-mode-seg">
+            <button type="button" data-mode="practice">Practice</button>
+            <button type="button" data-mode="performance">Performance</button>
+          </div>
+          <div id="practice-options">
+            <div class="coach-settings-row">
+              <label for="coach-auto-bpm-check">Auto +5 bpm</label>
+              ${toggle('coach-auto-bpm-check')}
+            </div>
+            <div class="coach-settings-row">
+              <label for="coach-auto-bpm-passes-input">Clean passes in a row</label>
+              ${number('coach-auto-bpm-passes-input', '', 'min="1" step="1"')}
+            </div>
+          </div>
+          <div id="performance-options">
+            <div class="coach-settings-row">
+              <label for="coach-reps-input">Passes before result</label>
+              ${number('coach-reps-input', '', 'min="1" max="16" step="1"')}
+            </div>
+            <div class="coach-settings-row">
+              <label for="coach-few-mistakes-input">"Getting there" up to</label>
+              ${number('coach-few-mistakes-input', '% off', 'min="0" max="100" step="1"')}
+            </div>
+          </div>
+        </section>
+
+        <section class="coach-settings-card">
+          <h3><i class="fa fa-bullseye"></i>Clean pass</h3>
+          <div class="coach-settings-row">
+            <label for="coach-goal-blue-input"><span class="coach-settings-blue">Blue</span> at least</label>
+            ${number('coach-goal-blue-input', '%', 'min="0" max="100" step="1"')}
+          </div>
+          <div class="coach-settings-row">
+            <label for="coach-goal-yellow-input"><span class="coach-settings-yellow">Yellow</span> at most</label>
+            ${number('coach-goal-yellow-input', '%', 'min="0" max="100" step="1"')}
+          </div>
+          <div class="coach-settings-row"><span class="coach-settings-note">and nothing missed or stray</span></div>
+        </section>
+
+        <section class="coach-settings-card">
+          <h3><i class="fa fa-clock-o"></i>Timing<span id="coach-calib-hint" class="coach-settings-warn">Not calibrated</span></h3>
+          <div class="coach-settings-row">
+            <label for="coach-tolerance-select">Window</label>
+            <select id="coach-tolerance-select">${toleranceOptions()}</select>
+          </div>
+          <div class="coach-settings-row">
+            <label for="coach-latency-input">Latency</label>
+            <span class="coach-settings-ctl">
+              <input type="number" id="coach-latency-input" step="1"><span class="coach-settings-unit">ms</span>
+              <button type="button" class="coach-settings-btn" id="coach-calibrate-btn">Calibrate</button>
+            </span>
+          </div>
+          <div class="coach-settings-row">
+            <label for="coach-calib-hit-rule-select">Calibration counts</label>
+            <select id="coach-calib-hit-rule-select">
+              <option value="loudest">Loudest hit</option>
+              <option value="every">Every hit</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="coach-settings-card">
+          <h3><i class="fa fa-music"></i>Metronome</h3>
+          <div class="coach-settings-row">
+            <label for="coach-countin-check">Count-in</label>
+            ${toggle('coach-countin-check')}
+          </div>
+          <div class="coach-settings-row">
+            <label for="coach-start-solo-check">Solo <span class="coach-settings-note">(mute the groove)</span></label>
+            ${toggle('coach-start-solo-check')}
+          </div>
+          <div class="coach-settings-row">
+            <label for="coach-metronome-vol">Volume</label>
+            <span class="coach-settings-ctl">
+              <input type="range" id="coach-metronome-vol" min="0" max="100">
+              <span class="coach-settings-unit" id="coach-metronome-vol-label"></span>
+            </span>
+          </div>
+        </section>
+
+        <section class="coach-settings-card wide">
+          <h3><i class="fa fa-th-large"></i>Kit<span id="coach-drummap-hint" class="coach-settings-warn">Not set up</span></h3>
+          <div class="coach-settings-row">
+            <label for="coach-drummap-btn">Mapping</label>
+            <button type="button" class="coach-settings-btn" id="coach-drummap-btn"></button>
+          </div>
+          <div class="coach-settings-row">
+            <label for="coach-min-velocity-input">Ignore hits below</label>
+            ${number('coach-min-velocity-input', 'velocity', 'min="0" max="127" step="1"')}
+          </div>
+        </section>
       </div>
 
-      <div id="practice-options">
-        <div class="coach-setting-row">
-          <label>Auto BPM</label>
-          <span class="coach-latency-group">
-            <input type="checkbox" id="coach-auto-bpm-check"> +5 when a pass meets the goal
-          </span>
-        </div>
-        <div class="coach-setting-row">
-          <label>Passes in a Row</label>
-          <input type="number" id="coach-auto-bpm-passes-input" min="1" step="1">
-        </div>
-      </div>
-
-      <div class="coach-setting-row">
-        <label>Goal: Blue</label>
-        <span class="coach-latency-group">
-          at least <input type="number" id="coach-goal-blue-input" min="0" max="100" step="1"> %
+      <div class="coach-settings-foot">
+        <label class="coach-settings-debug">${switchInput('coach-debug-grid-check')}Debug grid</label>
+        <span class="coach-settings-ctl">
+          <button type="button" class="coach-btn coach-btn-secondary" id="coach-cancel-btn">Cancel</button>
+          <button type="button" class="coach-btn coach-btn-primary" id="coach-start-btn">Start</button>
         </span>
-      </div>
-
-      <div class="coach-setting-row">
-        <label>Goal: Yellow</label>
-        <span class="coach-latency-group">
-          at most <input type="number" id="coach-goal-yellow-input" min="0" max="100" step="1"> %
-        </span>
-      </div>
-      
-      <div class="coach-setting-row">
-        <label>Count-in</label>
-        <input type="checkbox" id="coach-countin-check" checked>
-      </div>
-      
-      <div class="coach-setting-row">
-        <label>Tolerance</label>
-        <select id="coach-tolerance-select">
-          <option value="strict">Strict (±15ms)</option>
-          <option value="normal" selected>Normal (±30ms)</option>
-          <option value="relaxed">Relaxed (±50ms)</option>
-        </select>
-      </div>
-
-      <div class="coach-setting-row">
-        <label>Drum Mapping</label>
-        <button class="coach-btn coach-btn-calibrate" id="coach-drummap-btn">General MIDI</button>
-      </div>
-      <div id="coach-drummap-hint" class="coach-calib-hint" style="display:none;">Not configured</div>
-
-      <div class="coach-setting-row">
-        <label>Latency Offset</label>
-        <span class="coach-latency-group">
-          <input type="number" id="coach-latency-input" step="1" value="0"> ms
-          <button class="coach-btn coach-btn-calibrate" id="coach-calibrate-btn">Calibrate</button>
-        </span>
-      </div>
-      <div id="coach-calib-hint" class="coach-calib-hint" style="display:none;">Not calibrated</div>
-
-      <div class="coach-setting-row">
-        <label>Calibration Counts</label>
-        <select id="coach-calib-hit-rule-select">
-          <option value="loudest">Loudest hit per click</option>
-          <option value="every">Every hit</option>
-        </select>
-      </div>
-
-      <div class="coach-setting-row">
-        <label>Ignore Hits Below</label>
-        <span class="coach-latency-group">
-          <input type="number" id="coach-min-velocity-input" min="0" max="127" step="1" value="0"> velocity (0 = off)
-        </span>
-      </div>
-
-      <div class="coach-setting-row">
-        <label>Metronome Vol</label>
-        <span class="coach-slider-group">
-          <input type="range" id="coach-metronome-vol" min="0" max="100" value="100">
-          <span id="coach-metronome-vol-label">100%</span>
-        </span>
-      </div>
-
-      <div class="coach-setting-row">
-        <label>Start in Solo</label>
-        <input type="checkbox" id="coach-start-solo-check" checked>
-      </div>
-
-      <div class="coach-setting-row">
-        <label>Debug Grid</label>
-        <input type="checkbox" id="coach-debug-grid-check">
-      </div>
-
-      <div class="coach-dialog-buttons">
-        <button class="coach-btn coach-btn-secondary" id="coach-cancel-btn">Cancel</button>
-        <button class="coach-btn coach-btn-primary" id="coach-start-btn">Start Session</button>
       </div>
     `;
 
@@ -138,16 +127,12 @@ export class SettingsDialog {
   }
 
   _setupEventListeners() {
-    const modeSelect = this.container.querySelector('#coach-mode-select');
-    const perfOptions = this.container.querySelector('#performance-options');
     const startBtn = this.container.querySelector('#coach-start-btn');
     const cancelBtn = this.container.querySelector('#coach-cancel-btn');
 
-    const practiceOptions = this.container.querySelector('#practice-options');
-    modeSelect.addEventListener('change', () => {
-      perfOptions.style.display = modeSelect.value === 'performance' ? 'block' : 'none';
-      practiceOptions.style.display = modeSelect.value === 'practice' ? 'block' : 'none';
-    });
+    for (const btn of this.container.querySelectorAll('#coach-mode-seg button')) {
+      btn.addEventListener('click', () => this._showMode(btn.dataset.mode));
+    }
 
     this.container.querySelector('#coach-calibrate-btn').addEventListener('click', () => {
       this.save();
@@ -179,7 +164,7 @@ export class SettingsDialog {
 
   show() {
     // Load current state into fields
-    this.container.querySelector('#coach-mode-select').value = coachState.mode;
+    this._showMode(coachState.mode);
     this.container.querySelector('#coach-reps-input').value = coachState.reps;
     this.container.querySelector('#coach-countin-check').checked = coachState.countIn;
     this.container.querySelector('#coach-tolerance-select').value = coachState.tolerance;
@@ -193,19 +178,13 @@ export class SettingsDialog {
     this.container.querySelector('#coach-metronome-vol-label').textContent =
       coachState.metronomeVolume + '%';
 
-    this.container.querySelector('#performance-options').style.display =
-      coachState.mode === 'performance' ? 'block' : 'none';
-    this.container.querySelector('#practice-options').style.display =
-      coachState.mode === 'practice' ? 'block' : 'none';
     this.container.querySelector('#coach-few-mistakes-input').value = coachState.fewMistakesPercent;
     this.container.querySelector('#coach-auto-bpm-check').checked = coachState.autoBpm;
     this.container.querySelector('#coach-auto-bpm-passes-input').value = coachState.autoBpmPasses;
     this.container.querySelector('#coach-goal-blue-input').value = coachState.goalMinPerfectPercent;
     this.container.querySelector('#coach-goal-yellow-input').value = coachState.goalMaxClosePercent;
 
-    this.container.querySelector('#coach-calib-hint').style.display = coachState.calibrated
-      ? 'none'
-      : 'block';
+    this.container.querySelector('#coach-calib-hint').hidden = coachState.calibrated;
 
     // Update drum mapping button label
     const drumMapBtn = this.container.querySelector('#coach-drummap-btn');
@@ -215,11 +194,19 @@ export class SettingsDialog {
       drumMapBtn.textContent =
         coachState.drumMapPreset === '_gm' ? 'General MIDI' : coachState.drumMapPreset;
     }
-    this.container.querySelector('#coach-drummap-hint').style.display = coachState.drumMapConfigured
-      ? 'none'
-      : 'block';
+    this.container.querySelector('#coach-drummap-hint').hidden = coachState.drumMapConfigured;
 
     this.container.style.display = 'block';
+  }
+
+  /** Select a mode in the dialog: highlight it and show only its options. */
+  _showMode(mode) {
+    this._mode = mode;
+    for (const btn of this.container.querySelectorAll('#coach-mode-seg button')) {
+      btn.classList.toggle('on', btn.dataset.mode === mode);
+    }
+    this.container.querySelector('#practice-options').hidden = mode !== 'practice';
+    this.container.querySelector('#performance-options').hidden = mode !== 'performance';
   }
 
   hide() {
@@ -227,7 +214,7 @@ export class SettingsDialog {
   }
 
   save() {
-    coachState.mode = this.container.querySelector('#coach-mode-select').value;
+    coachState.mode = this._mode;
     coachState.reps = parseInt(this.container.querySelector('#coach-reps-input').value);
     coachState.countIn = this.container.querySelector('#coach-countin-check').checked;
     coachState.tolerance = this.container.querySelector('#coach-tolerance-select').value;
@@ -249,4 +236,29 @@ export class SettingsDialog {
     coachState.goalMaxClosePercent = this.container.querySelector('#coach-goal-yellow-input').value;
     coachState.save();
   }
+}
+
+/** A checkbox drawn as a switch. */
+function switchInput(id) {
+  return `<span class="coach-settings-switch"><input type="checkbox" id="${id}"><span></span></span>`;
+}
+
+/** A switch in a row, with an empty unit column so it lines up with the boxes in its card. */
+function toggle(id) {
+  return `<span class="coach-settings-ctl">${switchInput(id)}<span class="coach-settings-unit"></span></span>`;
+}
+
+/** A number box followed by its unit, in a fixed-width column so boxes line up in a card. */
+function number(id, unit, attrs) {
+  return `<span class="coach-settings-ctl"><input type="number" id="${id}" ${attrs}><span class="coach-settings-unit">${unit}</span></span>`;
+}
+
+/** The tolerance choices, each labeled with how far off a hit can be and still count. */
+function toleranceOptions() {
+  return Object.entries(TOLERANCE_WINDOWS)
+    .map(([name, w]) => {
+      const label = name.charAt(0).toUpperCase() + name.slice(1);
+      return `<option value="${name}">${label} ±${w.close} ms</option>`;
+    })
+    .join('');
 }
