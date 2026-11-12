@@ -1,4 +1,5 @@
-import { coachState, TOLERANCE_WINDOWS } from '../state/State.js';
+import { coachState } from '../state/State.js';
+import { TOLERANCE_LEVELS } from '../engine/TimingEvaluator.js';
 
 /**
  * SettingsDialog - Manages the settings UI
@@ -65,9 +66,10 @@ export class SettingsDialog {
         <section class="coach-settings-card">
           <h3><i class="fa fa-clock-o"></i>Timing<span id="coach-calib-hint" class="coach-settings-warn">Not calibrated</span></h3>
           <div class="coach-settings-row">
-            <label for="coach-tolerance-select">Window</label>
+            <label for="coach-tolerance-select">Level</label>
             <select id="coach-tolerance-select">${toleranceOptions()}</select>
           </div>
+          <div class="coach-settings-row"><span class="coach-settings-note" id="coach-tolerance-note"></span></div>
           <div class="coach-settings-row">
             <label for="coach-latency-input">Latency</label>
             <span class="coach-settings-ctl">
@@ -138,6 +140,9 @@ export class SettingsDialog {
       btn.addEventListener('click', () => this._showMode(btn.dataset.mode));
     }
 
+    this.container
+      .querySelector('#coach-tolerance-select')
+      .addEventListener('change', () => this._showToleranceNote());
     this.container.querySelector('#coach-calibrate-btn').addEventListener('click', () => {
       this.save();
       this.hide();
@@ -172,6 +177,7 @@ export class SettingsDialog {
     this.container.querySelector('#coach-reps-input').value = coachState.reps;
     this.container.querySelector('#coach-countin-check').checked = coachState.countIn;
     this.container.querySelector('#coach-tolerance-select').value = coachState.tolerance;
+    this._showToleranceNote();
     this.container.querySelector('#coach-latency-input').value = coachState.calibrationOffset;
     this.container.querySelector('#coach-calib-hit-rule-select').value =
       coachState.calibrationHitRule;
@@ -213,6 +219,12 @@ export class SettingsDialog {
     }
     this.container.querySelector('#practice-options').hidden = mode !== 'practice';
     this.container.querySelector('#performance-options').hidden = mode !== 'performance';
+  }
+
+  _showToleranceNote() {
+    const level = this.container.querySelector('#coach-tolerance-select').value;
+    this.container.querySelector('#coach-tolerance-note').textContent =
+      TOLERANCE_LEVELS[level].description;
   }
 
   hide() {
@@ -262,12 +274,9 @@ function number(id, unit, attrs) {
   return `<span class="coach-settings-ctl"><input type="number" id="${id}" ${attrs}><span class="coach-settings-unit">${unit}</span></span>`;
 }
 
-/** The tolerance choices, each labeled with how far off a hit can be and still count. */
+/** The experience levels, which set how far off a hit can be at each tier. */
 function toleranceOptions() {
-  return Object.entries(TOLERANCE_WINDOWS)
-    .map(([name, w]) => {
-      const label = name.charAt(0).toUpperCase() + name.slice(1);
-      return `<option value="${name}">${label} ±${w.close} ms</option>`;
-    })
+  return Object.entries(TOLERANCE_LEVELS)
+    .map(([name, level]) => `<option value="${name}">${level.label}</option>`)
     .join('');
 }
