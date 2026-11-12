@@ -155,6 +155,7 @@ export class Controller {
       // this._injectDebugGrooves(); // Disabled for PR
     }
     this._initDebugHotkeys();
+    this._initTransportHotkeys();
 
     // Debug grid is controlled by coachState.showDebugGrid constant in feedback/Renderer.js
 
@@ -859,6 +860,47 @@ export class Controller {
   }
 
   /**
+   * Transport keys, matching a player's: Space starts a coach session with the saved
+   * settings, or ends the one running; Enter restarts the running session from the top.
+   * They take the keys before the editor's own Space (play/stop) handler sees them, and
+   * leave them alone while a field has focus or a coach dialog is open (calibration counts
+   * key presses as taps).
+   */
+  _initTransportHotkeys() {
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.repeat || isTypingTarget(e.target) || this._dialogOpen()) return;
+        if (e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          if (this.isCoachingActive) this.stopSession();
+          else this._startFromKey();
+        } else if (e.key === 'Enter' && this.isCoachingActive) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.stopSession();
+          this._startFromKey();
+        }
+      },
+      true // capture: run before the editor's document-level handlers
+    );
+  }
+
+  _startFromKey() {
+    this.startSession().catch((error) => {
+      console.error('[Controller] Starting a session from the keyboard failed:', error);
+    });
+  }
+
+  _dialogOpen() {
+    const dialogs = [this.dialog, this.resultsDialog, this.calibrationDialog, this.drumMapDialog];
+    if (dialogs.some((d) => d.container.style.display === 'block')) return true;
+    const setupPrompt = document.getElementById('coachSetupPrompt');
+    return setupPrompt !== null && setupPrompt.style.display !== 'none';
+  }
+
+  /**
    * Register keyboard shortcuts for simulating drum hits, active while the debug grid is on.
    * k = kick, s = snare, h = closed hi-hat.
    * Calls the same handleMidiHit pipeline as real MIDI input.
@@ -1057,4 +1099,12 @@ export class Controller {
 
     wrapper.insertAdjacentHTML('afterbegin', html);
   }
+}
+
+/** Whether a key press is typing into a field (a slider doesn't count). */
+function isTypingTarget(target) {
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return tag === 'INPUT' && target.type !== 'range';
 }
