@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { newGrooveUtils, installMidiGlobal } from '../helpers/legacyLoader.js';
 
+// layout of a loaded one-measure track that plays each measure once
+const ONE_MEASURE = { measures: 1, repeatsPerBar: 1 };
+
 // Regression coverage for the MIDI *playback control* layer in groove_utils.js
 // (as opposed to midi-generation.test.js, which covers MIDI *file encoding*).
 //
@@ -336,7 +339,7 @@ describe('GrooveUtils MIDI playback controls', () => {
     it('sets MIDI.Player.timeWarp=1 and BPM=root.getTempo(), then calls MIDI.Player.loadFile with the URL', () => {
       const url = 'data:audio/midi;base64,XYZ';
 
-      gu.loadMIDIFromURL(url);
+      gu.loadMIDIFromURL(url, ONE_MEASURE);
 
       expect(globalThis.MIDI.Player.timeWarp).toBe(1);
       expect(globalThis.MIDI.Player.BPM).toBe(gu.getTempo());
@@ -351,7 +354,7 @@ describe('GrooveUtils MIDI playback controls', () => {
       // (undefined) is passed as loadFile's 2nd arg. So addListener is wired
       // synchronously on every loadMIDIFromURL call, not deferred until
       // loadFile's own callback fires.
-      gu.loadMIDIFromURL('data:audio/midi;base64,XYZ');
+      gu.loadMIDIFromURL('data:audio/midi;base64,XYZ', ONE_MEASURE);
 
       expect(globalThis.MIDI.Player.addListener).toHaveBeenCalledTimes(1);
       expect(typeof globalThis.MIDI.Player.addListener.mock.calls[0][0]).toBe('function');
@@ -449,7 +452,7 @@ describe('GrooveUtils MIDI playback controls', () => {
     // event payloads ({ now, end, message, note, channel, velocity }, matching
     // the fields read at groove_utils.js:2939-3014).
     function captureCallback() {
-      gu.loadMIDIFromURL('data:audio/midi;base64,XYZ');
+      gu.loadMIDIFromURL('data:audio/midi;base64,XYZ', ONE_MEASURE);
       return globalThis.MIDI.Player.addListener.mock.calls[0][0];
     }
 

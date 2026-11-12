@@ -404,3 +404,30 @@ input[type='range']:active::-webkit-slider-thumb {
     display: none !important;
   }
 }
+.repeatsLabel {
+  padding-left: 6px;
+  font-size: 16px;
+  color: #999999;
+  flex: none;
+  -webkit-flex: none;
+}
+.repeatsTextField {
+  margin: 1px 6px 0 6px;
+  color: #999999;
+  background-color: #222;
+  border: none;
+  width: 30px;
+  text-align: center;
+  font-size: 16px;
+  padding: 0;
+  height: 18px;
+  flex: none;
+  -webkit-flex: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.repeatsTextField::-webkit-inner-spin-button,
+.repeatsTextField::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

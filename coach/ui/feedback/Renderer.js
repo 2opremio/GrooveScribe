@@ -1,6 +1,7 @@
 import { DrumType } from '../../engine/DrumConstants.js';
 import { PlaylineInterpolator } from './PlaylineInterpolator.js';
 import { MeasureClearer } from './MeasureClearer.js';
+import { shownMeasurePosition } from '../../../js/noteTiming.js';
 
 import { coachState } from '../../state/State.js';
 
@@ -70,7 +71,9 @@ export class Renderer {
     this.systems = []; // Per-system rendering data
     this.sniffedData = null;
     this.measureDurationMs = 0;
-    this.totalMeasures = 0;
+    this.totalMeasures = 0; // measures of the notation
+    this.repeatsPerBar = 1; // times each measure plays before the next one
+    this._playedMeasure = null; // measure of the pass the playline was last in, as played
     this.clearedMeasures = new Set();
 
     // Playline interpolation (pure geometry, no DOM)
@@ -155,9 +158,11 @@ export class Renderer {
       this.verticalStep = sniffedData.verticalStep;
     }
 
-    const { measures, measureDurationMs } = context;
+    const { measures, measureDurationMs, repeatsPerBar } = context;
     this.measureDurationMs = measureDurationMs;
     this.totalMeasures = measures;
+    this.repeatsPerBar = repeatsPerBar;
+    // the drawing works in the time of the notation, which shows each measure once
     this.grooveContext.totalDurationMs = measureDurationMs * measures;
     this.clearedMeasures = new Set();
 
@@ -205,8 +210,13 @@ export class Renderer {
           // a different abcIndex than _refreshAbcMapping does).
           const sniffedGraces = system.chords.filter((n) => n.isGrace);
           let graceIdx = 0;
+          // a repeated measure's notes are drawn once, at their first play
+          const drawn = new Set();
 
           for (const note of timeline) {
+            const key = `${note.tickIndex}:${note.type}:${!!note.isGrace}`;
+            if (drawn.has(key)) continue;
+            drawn.add(key);
             let sniffed;
             if (note.isGrace) {
               // Match Nth timeline grace → Nth sniffed grace
@@ -225,7 +235,7 @@ export class Renderer {
               // rendering artifacts, so s.time reflects nominal spacing
               // instead of actual triplet timing.
               systemData.timeline.push({
-                timeMs: note.time,
+                timeMs: this._shownTimeMs(note.time),
                 tickIndex: note.tickIndex,
                 type: noteType,
                 abcIndex: sniffed.abcIndex,
@@ -289,8 +299,9 @@ export class Renderer {
    * Positions the circle at the target note's sniffed coordinate, with a
    * small horizontal offset reflecting the timing error.
    */
-  drawHitFeedbackByTime(hitTimeMs, tier, timingError, drumType, abcNoteIndex = null) {
+  drawHitFeedbackByTime(playedTimeMs, tier, timingError, drumType, abcNoteIndex = null) {
     if (!this._renderingEnabled || this.systems.length === 0) return;
+    const hitTimeMs = this._shownTimeMs(playedTimeMs);
 
     const isGrace = drumType === DrumType.FLAM_GRACE;
 
@@ -328,8 +339,9 @@ export class Renderer {
    * Uses interpolated X from measure boundaries and the Y for the drum
    * that was actually hit — never snaps to a target note position.
    */
-  drawExtraHit(hitTimeMs, drumType) {
+  drawExtraHit(playedTimeMs, drumType) {
     if (!this._renderingEnabled || this.systems.length === 0) return;
+    const hitTimeMs = this._shownTimeMs(playedTimeMs);
 
     // Find the system and interpolated X for this hit time
     const interp = this._interpolator.interpolate(hitTimeMs);
@@ -361,12 +373,47 @@ export class Renderer {
   /**
    * Reset clearing state for a new pass.
    * Called by Controller at playback start and at each _onRepeat.
-   * @param {number} startTimeMs - current playback time at pass start
+   * @param {number} startTimeMs - current playback time at pass start, as played
    */
   scheduleMeasureClearing(startTimeMs = 0) {
     this.clearedMeasures.clear();
     this._interpolator.cursor = 0;
-    this._clearer.schedule(startTimeMs);
+    this._playedMeasure = null;
+    this._clearer.schedule(this._shownTimeMs(startTimeMs));
+  }
+
+  /** @returns {number} how long one pass plays, every repeat of every measure, in ms */
+  get passDurationMs() {
+    return this.measureDurationMs * this.totalMeasures * this.repeatsPerBar;
+  }
+
+  /**
+   * The time in the notation that a time of the pass falls on.
+   * @param {number} playedTimeMs - time since the pass started
+   * @returns {number}
+   */
+  _shownTimeMs(playedTimeMs) {
+    const playedMeasures = playedTimeMs / this.measureDurationMs;
+    return shownMeasurePosition(playedMeasures, this.repeatsPerBar) * this.measureDurationMs;
+  }
+
+  /**
+   * When the playline moves on to another play of the same measure, it jumps back to the
+   * start of that measure: restart the interpolation there, and clear the previous play's
+   * circles from the measure.
+   * @param {number} playedTimeMs - time since the pass started
+   * @param {number} shownTimeMs - the same time in the notation
+   */
+  _followRepeats(playedTimeMs, shownTimeMs) {
+    const playedMeasure = Math.floor(playedTimeMs / this.measureDurationMs);
+    const previous = this._playedMeasure;
+    this._playedMeasure = playedMeasure;
+    if (previous === null || playedMeasure !== previous + 1) return;
+    if (playedMeasure % this.repeatsPerBar === 0) return; // a new measure, not a repeat
+
+    this._interpolator.cursor = 0;
+    this._clearer.clearMeasure(Math.floor(playedMeasure / this.repeatsPerBar));
+    this._clearer.schedule(shownTimeMs);
   }
 
   /**
@@ -668,7 +715,9 @@ export class Renderer {
    */
   _tickPlayLine() {
     if (!this._playLineGetTime) return; // guard against rAF/stop race
-    const timeMs = this._playLineGetTime();
+    const playedTimeMs = this._playLineGetTime();
+    const timeMs = this._shownTimeMs(playedTimeMs);
+    this._followRepeats(playedTimeMs, timeMs);
 
     // --- Threshold-based clearing ---
     this._clearer.tick(timeMs, (t) => this._getMeasureIndex(t));

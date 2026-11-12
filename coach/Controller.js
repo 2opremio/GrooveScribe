@@ -210,12 +210,12 @@ export class Controller {
 
     // Simulate count-in as the last measure of the groove.
     // Back-date sessionStartTime so the clearing loop sees timeMs
-    // starting at (N-1)*measureDuration — the last measure.
+    // starting at the start of the pass's last measure.
     // The clearing thresholds will fire for measure 0 during count-in,
     // ensuring it's cleared before any rushing hits arrive.
-    const totalMeasures = this.renderer.totalMeasures;
     const measureDurationMs = this.renderer.measureDurationMs;
-    this.sessionStartTime = scheduledAt - (totalMeasures - 1) * measureDurationMs;
+    const lastMeasureStartMs = this.renderer.passDurationMs - measureDurationMs;
+    this.sessionStartTime = scheduledAt - lastMeasureStartMs;
 
     // The count-in is for listening: nothing is graded until the first pass starts
     // (in _onRepeat), so a hit during it can't count against the player.
@@ -225,8 +225,7 @@ export class Controller {
     // Start clearing loop with rendering disabled (no playline or
     // circles visible during count-in).
     this.renderer._renderingEnabled = false;
-    const countInStartTimeMs = (totalMeasures - 1) * measureDurationMs;
-    this.renderer.scheduleMeasureClearing(countInStartTimeMs);
+    this.renderer.scheduleMeasureClearing(lastMeasureStartMs);
 
     this.renderer.startPlayLine(
       () => performance.now() - this.sessionStartTime - this._latencyMs()
@@ -573,6 +572,7 @@ export class Controller {
 
     const context = {
       measures: metrics.measures,
+      repeatsPerBar: metrics.repeatsPerBar,
       measureDurationMs: metrics.measureDurationMs,
     };
 
@@ -794,7 +794,7 @@ export class Controller {
    * the next pass's notes better than the current pass's waits for it (in _onRepeat).
    */
   _fitsNextPass(drum, timestamp) {
-    const passMs = this.renderer.totalMeasures * this.renderer.measureDurationMs;
+    const passMs = this.renderer.passDurationMs;
     const relativeHitTime = timestamp - this.sessionStartTime;
     const toNextPass = this.engine.nearestNoteDistance(drum, relativeHitTime - passMs, true);
     if (toNextPass > NORMAL_HIT_MATCH_WINDOW_MS) return false;

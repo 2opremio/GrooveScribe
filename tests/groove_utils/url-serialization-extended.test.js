@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { newGrooveUtils } from '../helpers/legacyLoader.js';
+import { constant_MAX_MEASURES } from '../../js/constants.js';
 
 // Deep regression coverage for GrooveUtils' URL <-> grooveData serialization
 // (`getGrooveDataFromUrlString` and `getUrlStringFromGrooveData` in
@@ -133,10 +134,10 @@ describe('GrooveUtils URL serialization (extended)', () => {
       }
     });
 
-    it('clamps values above constant_MAX_MEASURES (10) down to 10', () => {
+    it('clamps values above constant_MAX_MEASURES down to it', () => {
       const gd = gu.getGrooveDataFromUrlString('?TimeSig=4/4&Div=16&Measures=999');
-      expect(gd.numberOfMeasures).toBe(10);
-      expect(gd.hh_array).toHaveLength(160);
+      expect(gd.numberOfMeasures).toBe(constant_MAX_MEASURES);
+      expect(gd.hh_array).toHaveLength(16 * constant_MAX_MEASURES);
     });
 
     it('defaults to 1 measure when the param is absent', () => {
@@ -168,6 +169,27 @@ describe('GrooveUtils URL serialization (extended)', () => {
 
       const nonzero = gu.getGrooveDataFromUrlString('?Swing=42');
       expect(gu.getUrlStringFromGrooveData(nonzero)).toContain('Swing=42');
+    });
+  });
+
+  describe('Repeats (repeatsPerBar)', () => {
+    it('survives a save and reload of the groove URL', () => {
+      const gd = gu.getGrooveDataFromUrlString('?Measures=2&Repeats=6');
+      expect(gd.repeatsPerBar).toBe(6);
+      const reloaded = gu.getGrooveDataFromUrlString(gu.getUrlStringFromGrooveData(gd));
+      expect(reloaded.repeatsPerBar).toBe(6);
+    });
+
+    it('plays each measure once when absent, without adding it to the URL', () => {
+      const gd = gu.getGrooveDataFromUrlString('?Measures=2');
+      expect(gd.repeatsPerBar).toBe(1);
+      expect(gu.getUrlStringFromGrooveData(gd)).not.toContain('Repeats=');
+    });
+
+    it('treats a count below one or non-numeric as playing each measure once', () => {
+      for (const bad of [0, -2, 'xx']) {
+        expect(gu.getGrooveDataFromUrlString(`?Repeats=${bad}`).repeatsPerBar).toBe(1);
+      }
     });
   });
 

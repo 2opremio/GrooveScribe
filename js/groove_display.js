@@ -241,6 +241,7 @@ if (typeof GrooveDisplay === 'undefined') {
       myGrooveUtils.expandOrRetractMIDI_playback(true, false); // make it small
       myGrooveUtils.setTempo(myGrooveData.tempo);
       myGrooveUtils.setSwing(myGrooveData.swingPercent);
+      myGrooveUtils.setRepeatsPerBar(myGrooveData.repeatsPerBar);
       myGrooveUtils.oneTimeInitializeMidi();
 
       root.GrooveDisplayUniqueCounter++;
@@ -326,6 +327,7 @@ if (typeof GrooveDisplay === 'undefined') {
         myGrooveUtils.expandOrRetractMIDI_playback(true, expandPlayer); // make it small
         myGrooveUtils.setTempo(GrooveData.tempo);
         myGrooveUtils.setSwing(GrooveData.swingPercent);
+        myGrooveUtils.setRepeatsPerBar(GrooveData.repeatsPerBar);
         myGrooveUtils.setMetronomeFrequencyDisplay(GrooveData.metronomeFrequency);
         myGrooveUtils.oneTimeInitializeMidi();
       }

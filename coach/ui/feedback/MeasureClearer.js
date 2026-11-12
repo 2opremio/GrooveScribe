@@ -86,7 +86,7 @@ export class MeasureClearer {
       const currentMeasure = getMeasureIndex(timeMs);
       const ahead = t.measureIndex === currentMeasure ? 0 : this._clearAheadMs;
       if (timeMs >= t.timeMs - ahead) {
-        this._clearRegion(t.measureIndex);
+        this.clearMeasure(t.measureIndex);
         this._thresholdCursor++;
       } else {
         break; // remaining thresholds are in the future
@@ -99,7 +99,7 @@ export class MeasureClearer {
    * of the given measure. Finds the measure in the correct system and
    * layer automatically.
    */
-  _clearRegion(measureIndex) {
+  clearMeasure(measureIndex) {
     for (const sys of this._systems) {
       const bounds = sys.measureBoundaries;
       const localIdx = measureIndex - (sys.measureOffset || 0);

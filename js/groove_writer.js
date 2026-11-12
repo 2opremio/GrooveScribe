@@ -85,6 +85,10 @@ import * as _perm from './permutations.js';
 import * as _view from './viewHtml.js';
 import * as _grid from './gridState.js';
 
+// Permutation practice plays each generated section once: the repeats count applies to the
+// bars of a groove.
+const PERMUTATION_REPEATS_PER_BAR = 1;
+
 // GrooveWriter class.   The only one in this file.
 
 function GrooveWriter() {
@@ -1770,20 +1774,24 @@ function GrooveWriter() {
         else
           num_notes_for_swing = (16 * class_num_beats_per_measure) / class_note_value_per_measure;
 
-        root.myGrooveUtils.MIDI_from_HH_Snare_Kick_Arrays(
-          midiTrack,
-          HH_Array,
-          Snare_Array,
-          Kick_Array,
-          Toms_Array,
-          MIDI_type,
-          metronomeFrequency,
-          num_notes,
-          num_notes_for_swing,
-          swing_percentage,
-          class_num_beats_per_measure,
-          class_note_value_per_measure
-        );
+        var repeatsPerBar = root.myGrooveUtils.getRepeatsPerBar();
+        var repeat;
+        for (repeat = 0; repeat < repeatsPerBar; repeat++) {
+          root.myGrooveUtils.MIDI_from_HH_Snare_Kick_Arrays(
+            midiTrack,
+            HH_Array,
+            Snare_Array,
+            Kick_Array,
+            Toms_Array,
+            MIDI_type,
+            metronomeFrequency,
+            num_notes,
+            num_notes_for_swing,
+            swing_percentage,
+            class_num_beats_per_measure,
+            class_note_value_per_measure
+          );
+        }
 
         for (i = 1; i < class_number_of_measures; i++) {
           // reset arrays
@@ -1816,20 +1824,22 @@ function GrooveWriter() {
             i
           );
 
-          root.myGrooveUtils.MIDI_from_HH_Snare_Kick_Arrays(
-            midiTrack,
-            HH_Array,
-            Snare_Array,
-            Kick_Array,
-            Toms_Array,
-            MIDI_type,
-            metronomeFrequency,
-            num_notes,
-            num_notes_for_swing,
-            swing_percentage,
-            class_num_beats_per_measure,
-            class_note_value_per_measure
-          );
+          for (repeat = 0; repeat < repeatsPerBar; repeat++) {
+            root.myGrooveUtils.MIDI_from_HH_Snare_Kick_Arrays(
+              midiTrack,
+              HH_Array,
+              Snare_Array,
+              Kick_Array,
+              Toms_Array,
+              MIDI_type,
+              metronomeFrequency,
+              num_notes,
+              num_notes_for_swing,
+              swing_percentage,
+              class_num_beats_per_measure,
+              class_note_value_per_measure
+            );
+          }
         }
         break;
     }
@@ -1854,6 +1864,7 @@ function GrooveWriter() {
     myGrooveData.notesPerMeasure = class_notes_per_measure;
     myGrooveData.timeDivision = class_time_division;
     myGrooveData.numberOfMeasures = class_number_of_measures;
+    myGrooveData.repeatsPerBar = root.myGrooveUtils.getRepeatsPerBar();
     myGrooveData.numBeats = class_num_beats_per_measure;
     myGrooveData.noteValue = class_note_value_per_measure;
     myGrooveData.showStickings = isStickingsVisible();
@@ -2192,7 +2203,8 @@ function GrooveWriter() {
           false,
           class_num_beats_per_measure,
           class_note_value_per_measure,
-          renderWidth
+          renderWidth,
+          PERMUTATION_REPEATS_PER_BAR
         );
         root.myGrooveUtils.note_mapping_array = [];
 
@@ -2256,7 +2268,8 @@ function GrooveWriter() {
           false,
           class_num_beats_per_measure,
           class_note_value_per_measure,
-          renderWidth
+          renderWidth,
+          PERMUTATION_REPEATS_PER_BAR
         );
         root.myGrooveUtils.note_mapping_array = [];
 
@@ -2319,7 +2332,8 @@ function GrooveWriter() {
           true,
           class_num_beats_per_measure,
           class_note_value_per_measure,
-          renderWidth
+          renderWidth,
+          root.myGrooveUtils.getRepeatsPerBar()
         );
         root.myGrooveUtils.note_mapping_array = [];
 
@@ -2823,13 +2837,14 @@ function GrooveWriter() {
     set_Default_notes(window.location.search);
 
     root.myGrooveUtils.midiEventCallbacks.loadMidiDataEvent = function (myroot, playStarting) {
-      var midiURL;
+      var midiURL, midiLayout;
 
       if (playStarting && class_metronome_count_in_active) {
         midiURL = root.myGrooveUtils.MIDI_build_midi_url_count_in_track(
           class_num_beats_per_measure,
           class_note_value_per_measure
         );
+        midiLayout = { measures: 1, repeatsPerBar: 1 };
         root.myGrooveUtils.midiNoteHasChanged(); // this track is temporary
         class_metronome_count_in_is_playing = true;
       } else {
@@ -2839,9 +2854,16 @@ function GrooveWriter() {
           root.myGrooveUtils.resetMetronomeOptionsOffsetClickStartRotation();
         }
         midiURL = createMidiUrlFromClickableUI('our_MIDI');
+        midiLayout =
+          class_permutation_type == 'none'
+            ? {
+                measures: class_number_of_measures,
+                repeatsPerBar: root.myGrooveUtils.getRepeatsPerBar(),
+              }
+            : { measures: class_number_of_measures, repeatsPerBar: PERMUTATION_REPEATS_PER_BAR };
         root.myGrooveUtils.midiResetNoteHasChanged();
       }
-      root.myGrooveUtils.loadMIDIFromURL(midiURL);
+      root.myGrooveUtils.loadMIDIFromURL(midiURL, midiLayout);
       root.updateGrooveDBSource();
     };
 
@@ -2916,6 +2938,8 @@ function GrooveWriter() {
 
     // get updates when the tempo changes
     root.myGrooveUtils.tempoChangeCallback = root.tempoChangeCallback;
+    // the notation shows the count, and the URL carries it
+    root.myGrooveUtils.repeatsChangeCallback = updateSheetMusic;
   };
 
   // called right before the midi reloads for the next replay
@@ -3591,6 +3615,8 @@ function GrooveWriter() {
     root.myGrooveUtils.setTempo(myGrooveData.tempo);
 
     root.myGrooveUtils.setSwing(myGrooveData.swingPercent);
+
+    root.myGrooveUtils.setRepeatsPerBar(myGrooveData.repeatsPerBar);
 
     root.setMetronomeFrequency(myGrooveData.metronomeFrequency);
 

@@ -56,6 +56,7 @@ const EMPTY_NOTE_ARRAY = [
  * @property {number} notesPerMeasure  Slots per measure at the current subdivision.
  * @property {number} timeDivision     Subdivision (4, 8, 16, 32, or triplet forms 6/12/24/48).
  * @property {number} numberOfMeasures  Measure count.
+ * @property {number} repeatsPerBar    How many times each measure plays before the next one.
  * @property {number} numBeats         Time-signature numerator (top).
  * @property {number} noteValue        Time-signature denominator (bottom).
  * @property {Array<string|boolean>} sticking_array  Sticking lane (R/L annotations); each slot is an ABC token or false.
@@ -92,6 +93,7 @@ export function createGrooveData(config = {}) {
     notesPerMeasure: 16,
     timeDivision: 16,
     numberOfMeasures: 1,
+    repeatsPerBar: 1,
     numBeats: 4, // TimeSigTop: Top part of Time Signture 3/4, 4/4, 5/4, 6/8, etc...
     noteValue: 4, // TimeSigBottom: Bottom part of Time Sig   4 = quarter notes, 8 = 8th notes, 16ths, etc..
     sticking_array: EMPTY_NOTE_ARRAY.slice(0), // copy by value

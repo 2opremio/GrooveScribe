@@ -129,9 +129,19 @@ export class ABCIndexMapper {
   buildTimeline(data, metrics) {
     if (!data || !metrics) return [];
 
-    const { noteTimeMs, totalTicks } = metrics;
+    const { noteTimeMs, totalTicks, repeatsPerBar } = metrics;
     const timeline = [];
 
+    for (let repeat = 0; repeat < repeatsPerBar; repeat++) {
+      this._addPassNotes(data, totalTicks, (i) => noteTimeMs(i, repeat), timeline);
+    }
+    return timeline.sort((a, b) => a.time - b.time);
+  }
+
+  /**
+   * Add every note of the groove to the timeline once, at the time noteTimeMs gives it.
+   */
+  _addPassNotes(data, totalTicks, noteTimeMs, timeline) {
     for (let i = 0; i < totalTicks; i++) {
       // Hi-Hats & Cymbals
       if (data.hh_array[i]) {
@@ -158,7 +168,6 @@ export class ABCIndexMapper {
         });
       }
     }
-    return timeline.sort((a, b) => a.time - b.time);
   }
 
   /**
@@ -211,11 +220,12 @@ export class ABCIndexMapper {
     const measures = data.numberOfMeasures;
     const notesPerMeasure = data.notesPerMeasure;
 
-    if (!bpm || !numBeats || !measures || !notesPerMeasure) {
+    if (!bpm || !numBeats || !measures || !notesPerMeasure || !data.repeatsPerBar) {
       console.error('[ABCIndexMapper] Groove data has missing/zero fields:', {
         tempo: bpm,
         numBeats,
         numberOfMeasures: measures,
+        repeatsPerBar: data.repeatsPerBar,
         notesPerMeasure,
       });
       return null;
@@ -240,12 +250,21 @@ export class ABCIndexMapper {
     );
     const measureTicks = slotTicks[fullSizeNotes];
     const measureDurationMs = ticksToMs(measureTicks, bpm);
-    const noteTimeMs = (i) => {
-      const measure = Math.floor(i / notesPerMeasure);
+    const repeatsPerBar = data.repeatsPerBar;
+    // each measure plays repeatsPerBar times before the next one
+    const noteTimeMs = (i, repeat) => {
+      const playedMeasure = Math.floor(i / notesPerMeasure) * repeatsPerBar + repeat;
       const slot = (i % notesPerMeasure) * scaler;
-      return ticksToMs(measure * measureTicks + slotTicks[slot], bpm);
+      return ticksToMs(playedMeasure * measureTicks + slotTicks[slot], bpm);
     };
 
-    return { measures, notesPerMeasure, totalTicks, measureDurationMs, noteTimeMs };
+    return {
+      measures,
+      repeatsPerBar,
+      notesPerMeasure,
+      totalTicks,
+      measureDurationMs,
+      noteTimeMs,
+    };
   }
 }
