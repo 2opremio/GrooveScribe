@@ -13,9 +13,21 @@ import { scoreLayoutExtractor } from './engine/ScoreLayoutExtractor.js';
 import { loadDrumMapPresets, getPresetMap, getPresetHihatCC } from './data/DrumMapLoader.js';
 import { drumMapToRuntime, encodeDrumMap } from './data/DrumMapUtils.js';
 import { DrumMapDialog } from './ui/DrumMapDialog.js';
+import { ScorePanel } from './ui/ScorePanel.js';
+import {
+  addScores,
+  emptyScore,
+  goalChecks,
+  isBetter,
+  meetsGoal,
+  verdict,
+} from './engine/PassScore.js';
 
 // velocity given to hits simulated from the keyboard (k/s/h); a firm, non-accented hit
 const DEBUG_KEY_VELOCITY = 100;
+
+// BPM added by auto BPM each time enough passes meet the goal
+const AUTO_BPM_STEP = 5;
 
 /**
  * Controller - Orchestrates the entire Drum Coach feature
@@ -40,6 +52,7 @@ export class Controller {
     });
     this.dialog = new SettingsDialog();
     this.resultsDialog = new ResultsDialog();
+    this.scorePanel = new ScorePanel();
     this.calibrationDialog = new CalibrationDialog({
       midiHandler: this.midiHandler,
       latencyManager: this.latencyManager,
@@ -54,6 +67,14 @@ export class Controller {
     this.currentRepetition = 0;
     this.countInPlaying = false; // the count-in runs before the first graded pass
     this.nextPassHits = []; // hits waiting for the next pass to start; see _fitsNextPass
+    this.lastPassScore = null; // the last pass played to the end
+    this.bestScores = new Map(); // best pass this session, by groove and tempo; see _bestKey
+    this.bestKey = null; // _bestKey() of the groove being coached
+    this.sessionTotals = emptyScore(); // every pass played to the end in this session
+    this.passesPlayed = 0;
+    this.goalStreak = 0; // passes in a row that met the goal, for auto BPM
+    this.timelineTempo = null; // tempo the engine's note times were built for
+    this._missWatchId = null; // requestAnimationFrame id of _watchMisses
   }
 
   /**
@@ -83,6 +104,7 @@ export class Controller {
 
     this.dialog.inject();
     this.resultsDialog.inject();
+    this.scorePanel.inject();
     this.calibrationDialog.inject();
     this.drumMapDialog.inject();
 
@@ -163,6 +185,7 @@ export class Controller {
     const originalPlayEvent = utils.midiEventCallbacks.playEvent;
     const originalStopEvent = utils.midiEventCallbacks.stopEvent;
     const originalRepeatCallback = utils.repeatCallback;
+    const originalNotePlaying = utils.midiEventCallbacks.notePlaying;
 
     // Both hooks run right after MIDI.js has scheduled the audio from "now", so the time is
     // read first: anything done before reading it would make the coach's clock start late.
@@ -178,6 +201,15 @@ export class Controller {
     utils.midiEventCallbacks.stopEvent = (root) => {
       if (originalStopEvent) originalStopEvent(root);
       if (this.isCoachingActive) this._onPlaybackStop();
+    };
+
+    // A pass ends with a 'complete' note event, before the MIDI for the next pass is
+    // regenerated: a tempo set here plays from the next pass on.
+    utils.midiEventCallbacks.notePlaying = (root, noteType, percentComplete) => {
+      if (noteType === 'complete' && this.isCoachingActive && this.engine.isPlaying) {
+        this._onPassComplete();
+      }
+      originalNotePlaying(root, noteType, percentComplete);
     };
 
     // Intercept repeat callback for multi-repetition sessions
@@ -230,6 +262,7 @@ export class Controller {
     this.renderer.startPlayLine(
       () => performance.now() - this.sessionStartTime - this._latencyMs()
     );
+    this._startWatchingMisses();
 
     if (coachState.showDebugGrid) {
       this.renderer.renderDebugGrid();
@@ -241,6 +274,7 @@ export class Controller {
    */
   _onPlaybackStop() {
     this.renderer.stopPlayLine();
+    this._stopWatchingMisses();
     if (coachState.mode === 'performance' && this.isCoachingActive) {
       this._showResults();
     }
@@ -268,8 +302,11 @@ export class Controller {
     // simulate the count-in as the groove's last measure, but repeats
     // start at groove time 0 with no count-in.
     this.sessionStartTime = scheduledAt;
+    // the tempo changed for this pass (auto BPM, or by hand): expect its notes at their new times
+    if (this.grooveWriter.myGrooveUtils.getTempo() !== this.timelineTempo) this._loadTimeline();
     this.engine.start(this.sessionStartTime);
     this.renderer.scheduleMeasureClearing(0);
+    this._refreshScorePanel();
 
     // grade the hits that arrived for this pass before it started
     const waiting = this.nextPassHits;
@@ -299,11 +336,118 @@ export class Controller {
    * Display the performance results dialog
    */
   _showResults() {
-    const stats = this.engine.getResults();
+    const totals = this.sessionTotals;
     this.isCoachingActive = false;
     this.renderer.clearAll();
     this._restoreEditorGrid();
-    this.resultsDialog.show(stats);
+    this.resultsDialog.show(
+      totals,
+      this.passesPlayed,
+      verdict(totals, coachState.goal, coachState.fewMistakesPercent)
+    );
+  }
+
+  /**
+   * The pass has played to its end: every note not hit is missed, and the pass's score
+   * counts toward the session, the best at this tempo, and auto BPM.
+   */
+  _onPassComplete() {
+    for (const note of this.engine.finishPass()) this._drawMiss(note);
+    const score = this.engine.passScore();
+    this.lastPassScore = score;
+    this.sessionTotals = addScores(this.sessionTotals, score);
+    this.passesPlayed++;
+
+    const best = this.bestScores.get(this.bestKey);
+    if (!best || isBetter(score, best)) this.bestScores.set(this.bestKey, score);
+
+    if (coachState.mode === 'practice' && coachState.autoBpm) {
+      this.goalStreak = meetsGoal(score, coachState.goal) ? this.goalStreak + 1 : 0;
+      if (this.goalStreak >= coachState.autoBpmPasses) {
+        this.goalStreak = 0;
+        const utils = this.grooveWriter.myGrooveUtils;
+        utils.setTempo(utils.getTempo() + AUTO_BPM_STEP);
+        // the best at this tempo is now the best at the new one
+        this.bestKey = this._bestKey();
+      }
+    }
+    this._refreshScorePanel();
+  }
+
+  /**
+   * Build the engine's note times for the groove as it is now (tempo included), and
+   * the renderer's mapping of them onto the notation.
+   */
+  _loadTimeline() {
+    this.engine.loadGroove({ target: this.getGrooveAsTimeline() });
+    this.timelineTempo = this.grooveWriter.myGrooveUtils.getTempo();
+    this.bestKey = this._bestKey();
+    this._refreshAbcMapping();
+    this.setRendererGrooveContext();
+  }
+
+  /**
+   * Identifies a groove at a tempo, so a best score belongs to the notes and tempo it was
+   * played at.
+   */
+  _bestKey() {
+    const d = this.grooveWriter.grooveDataFromClickableUI();
+    return JSON.stringify([
+      d.tempo,
+      d.numBeats,
+      d.noteValue,
+      d.timeDivision,
+      d.numberOfMeasures,
+      d.repeatsPerBar,
+      d.swingPercent,
+      d.hh_array,
+      d.snare_array,
+      d.kick_array,
+      d.toms_array,
+    ]);
+  }
+
+  _drawMiss(note) {
+    const abcIndex = this.abcMapper.getIndex(note.tickIndex, note.editorType || note.type);
+    this.renderer.drawMiss(note.time, note.type, abcIndex >= 0 ? abcIndex : null);
+  }
+
+  /** Mark notes as missed as soon as their time to be hit has passed. */
+  _startWatchingMisses() {
+    const watch = () => {
+      if (this.engine.isPlaying) {
+        const missed = this.engine.takeMissedNotes(performance.now());
+        for (const note of missed) this._drawMiss(note);
+        if (missed.length > 0) this._refreshScorePanel();
+      }
+      this._missWatchId = requestAnimationFrame(watch);
+    };
+    this._missWatchId = requestAnimationFrame(watch);
+  }
+
+  _stopWatchingMisses() {
+    cancelAnimationFrame(this._missWatchId);
+    this._missWatchId = null;
+  }
+
+  _refreshScorePanel() {
+    const current = this.engine.isPlaying ? this.engine.passScore() : null;
+    const showGoal = coachState.mode === 'practice' && coachState.autoBpm;
+    this.scorePanel.update({
+      current,
+      last: this.lastPassScore,
+      best: this.bestScores.get(this.bestKey) ?? null,
+      goal: showGoal
+        ? {
+            nextTempo: this.grooveWriter.myGrooveUtils.getTempo() + AUTO_BPM_STEP,
+            checks: current ? goalChecks(current, coachState.goal) : null,
+            targets: coachState.goal,
+            score: current,
+            passesDone: this.goalStreak,
+            passesNeeded: coachState.autoBpmPasses,
+          }
+        : null,
+    });
   }
 
   /**
@@ -314,12 +458,15 @@ export class Controller {
       // 0. Connect MIDI on first session (lazy initialization)
       await this._ensureMidiConnected();
 
-      // 1. Get current groove data from writer
-      const grooveData = this.getGrooveAsTimeline();
-
-      // 2. Setup engine with tolerance windows based on settings
+      // 1-2. Setup engine with tolerance windows based on settings, and the groove's notes
       this.engine.windows = coachState.getToleranceWindows();
-      this.engine.loadGroove({ target: grooveData });
+      this.engine.loadGroove({ target: this.getGrooveAsTimeline() });
+      this.timelineTempo = this.grooveWriter.myGrooveUtils.getTempo();
+      this.bestKey = this._bestKey();
+      this.lastPassScore = null;
+      this.sessionTotals = emptyScore();
+      this.passesPlayed = 0;
+      this.goalStreak = 0;
 
       // 3. Activate coaching mode
       this.isCoachingActive = true;
@@ -385,6 +532,8 @@ export class Controller {
       this.grooveWriter.displayNewSVG();
       this._refreshAbcMapping();
       this.setRendererGrooveContext();
+      this.scorePanel.show();
+      this._refreshScorePanel();
 
       // 7. Set coach mode URL flag and drum map params, then update URL
       this.grooveWriter.myGrooveUtils.coachMode = true;
@@ -409,6 +558,7 @@ export class Controller {
    */
   stopSession() {
     this.isCoachingActive = false;
+    this._stopWatchingMisses();
     this.engine.stop();
     this.renderer.clearAll();
 
@@ -451,6 +601,7 @@ export class Controller {
    */
   _restoreEditorGrid() {
     const saved = this._savedState || {};
+    this.scorePanel.hide();
 
     // 1. Restore player bar (stop icon, labels, badge, callbacks)
     try {
@@ -554,6 +705,7 @@ export class Controller {
       // Extra hits (gray circles) - interpolated position based on hit drum
       this.renderer.drawExtraHit(hitTimeMs, drum);
     }
+    this._refreshScorePanel();
   }
 
   /**

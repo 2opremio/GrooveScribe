@@ -7,6 +7,7 @@ const VALID_TOLERANCES = ['strict', 'normal', 'relaxed'];
 // which hits near a calibration click count as the tap: only the loudest, or every hit
 const VALID_CALIBRATION_HIT_RULES = ['loudest', 'every'];
 const MAX_MIDI_VELOCITY = 127;
+const MAX_PERCENT = 100;
 
 const TOLERANCE_WINDOWS = {
   strict: { perfect: 15, good: 25, close: 40 },
@@ -30,7 +31,21 @@ const DEFAULTS = {
   startWithSolo: true,
   calibrationHitRule: 'loudest',
   minHitVelocity: 0, // 0 = no hit is ignored for being soft
+  autoBpm: false, // in practice mode, raise the tempo after passes that meet the goal
+  autoBpmPasses: 1, // passes in a row that must meet the goal before the tempo rises
+  goalMinPerfectPercent: 50, // blue notes, in percent of the notes hit, at least
+  goalMaxClosePercent: 10, // yellow notes, in percent of the notes hit, at most
+  fewMistakesPercent: 5, // missed notes and stray hits, in percent of the notes, that count as few
 };
+
+function percentOrKeep(value, current, name) {
+  value = Number(value);
+  if (Number.isNaN(value)) {
+    console.warn(`[State] Invalid ${name} '${value}', keeping '${current}'`);
+    return current;
+  }
+  return Math.max(0, Math.min(MAX_PERCENT, Math.round(value)));
+}
 
 export class StateManager {
   constructor() {
@@ -155,6 +170,75 @@ export class StateManager {
     this._data.minHitVelocity = Math.max(0, Math.min(MAX_MIDI_VELOCITY, Math.round(value)));
   }
 
+  // AutoBpm: in practice mode, raise the tempo after enough passes that meet the goal
+  get autoBpm() {
+    return this._data.autoBpm;
+  }
+
+  set autoBpm(value) {
+    this._data.autoBpm = Boolean(value);
+  }
+
+  // AutoBpmPasses: passes in a row that must meet the goal before the tempo rises
+  get autoBpmPasses() {
+    return this._data.autoBpmPasses;
+  }
+
+  set autoBpmPasses(value) {
+    value = Math.floor(Number(value));
+    if (Number.isNaN(value) || value < 1) {
+      console.warn(
+        `[State] Invalid autoBpmPasses '${value}', keeping '${this._data.autoBpmPasses}'`
+      );
+      return;
+    }
+    this._data.autoBpmPasses = value;
+  }
+
+  get goalMinPerfectPercent() {
+    return this._data.goalMinPerfectPercent;
+  }
+
+  set goalMinPerfectPercent(value) {
+    this._data.goalMinPerfectPercent = percentOrKeep(
+      value,
+      this._data.goalMinPerfectPercent,
+      'goalMinPerfectPercent'
+    );
+  }
+
+  get goalMaxClosePercent() {
+    return this._data.goalMaxClosePercent;
+  }
+
+  set goalMaxClosePercent(value) {
+    this._data.goalMaxClosePercent = percentOrKeep(
+      value,
+      this._data.goalMaxClosePercent,
+      'goalMaxClosePercent'
+    );
+  }
+
+  get fewMistakesPercent() {
+    return this._data.fewMistakesPercent;
+  }
+
+  set fewMistakesPercent(value) {
+    this._data.fewMistakesPercent = percentOrKeep(
+      value,
+      this._data.fewMistakesPercent,
+      'fewMistakesPercent'
+    );
+  }
+
+  /** @returns {import('../engine/PassScore.js').Goal} what a pass must reach */
+  get goal() {
+    return {
+      minPerfectPercent: this.goalMinPerfectPercent,
+      maxClosePercent: this.goalMaxClosePercent,
+    };
+  }
+
   // StartWithSolo property — enable Solo (mute synth) when session starts
   get startWithSolo() {
     return this._data.startWithSolo;
@@ -219,45 +303,16 @@ export class StateManager {
     return TOLERANCE_WINDOWS[this.tolerance];
   }
 
-  // Convert to plain object
+  // Convert to plain object: every setting, by name
   toObject() {
-    return {
-      mode: this.mode,
-      tolerance: this.tolerance,
-      reps: this.reps,
-      countIn: this.countIn,
-      calibrationOffset: this.calibrationOffset,
-      calibrated: this.calibrated,
-      showDebugGrid: this.showDebugGrid,
-      metronomeVolume: this.metronomeVolume,
-      startWithSolo: this.startWithSolo,
-      calibrationHitRule: this.calibrationHitRule,
-      minHitVelocity: this.minHitVelocity,
-      drumMapPreset: this.drumMapPreset,
-      drumMapCustom: this.drumMapCustom,
-      drumMapCustomHihatCC: this.drumMapCustomHihatCC,
-      drumMapConfigured: this.drumMapConfigured,
-    };
+    return Object.fromEntries(Object.keys(DEFAULTS).map((key) => [key, this[key]]));
   }
 
-  // Restore from plain object
+  // Restore from plain object, through each setting's validation
   fromObject(obj) {
-    if (obj.mode !== undefined) this.mode = obj.mode;
-    if (obj.tolerance !== undefined) this.tolerance = obj.tolerance;
-    if (obj.reps !== undefined) this.reps = obj.reps;
-    if (obj.countIn !== undefined) this.countIn = obj.countIn;
-    if (obj.calibrationOffset !== undefined) this.calibrationOffset = obj.calibrationOffset;
-    if (obj.calibrated !== undefined) this.calibrated = obj.calibrated;
-    if (obj.showDebugGrid !== undefined) this.showDebugGrid = obj.showDebugGrid;
-    if (obj.metronomeVolume !== undefined) this.metronomeVolume = obj.metronomeVolume;
-    if (obj.startWithSolo !== undefined) this.startWithSolo = obj.startWithSolo;
-    if (obj.calibrationHitRule !== undefined) this.calibrationHitRule = obj.calibrationHitRule;
-    if (obj.minHitVelocity !== undefined) this.minHitVelocity = obj.minHitVelocity;
-    if (obj.drumMapPreset !== undefined) this.drumMapPreset = obj.drumMapPreset;
-    if (obj.drumMapCustom !== undefined) this.drumMapCustom = obj.drumMapCustom;
-    if (obj.drumMapCustomHihatCC !== undefined)
-      this.drumMapCustomHihatCC = obj.drumMapCustomHihatCC;
-    if (obj.drumMapConfigured !== undefined) this.drumMapConfigured = obj.drumMapConfigured;
+    for (const key of Object.keys(DEFAULTS)) {
+      if (obj[key] !== undefined) this[key] = obj[key];
+    }
   }
 
   // Persistence

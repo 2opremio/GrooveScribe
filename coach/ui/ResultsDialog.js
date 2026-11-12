@@ -1,3 +1,12 @@
+import { tierPercentages } from '../engine/PassScore.js';
+
+const VERDICT_LABELS = {
+  clean: 'Clean',
+  solid: 'Solid',
+  'getting-there': 'Getting there',
+  'keep-at-it': 'Keep at it',
+};
+
 /**
  * ResultsDialog - Shows session results after performance mode
  */
@@ -12,42 +21,35 @@ export class ResultsDialog {
     const dialog = document.createElement('div');
     dialog.id = 'coachResultsDialog';
     dialog.innerHTML = `
-      <h2>Session Complete!</h2>
-      
+      <h2 id="result-verdict"></h2>
       <div class="coach-results-grid">
         <div class="coach-result-tile perfect">
-          <div class="coach-result-value" id="result-perfect">0</div>
+          <div class="coach-result-value" id="result-perfect">–</div>
           <div class="coach-result-label">Perfect</div>
         </div>
         <div class="coach-result-tile good">
-          <div class="coach-result-value" id="result-good">0</div>
+          <div class="coach-result-value" id="result-good">–</div>
           <div class="coach-result-label">Good</div>
         </div>
         <div class="coach-result-tile close">
-          <div class="coach-result-value" id="result-close">0</div>
+          <div class="coach-result-value" id="result-close">–</div>
           <div class="coach-result-label">Close</div>
         </div>
         <div class="coach-result-tile miss">
-          <div class="coach-result-value" id="result-miss">0</div>
-          <div class="coach-result-label">Miss</div>
+          <div class="coach-result-value" id="result-missed">0</div>
+          <div class="coach-result-label">Missed</div>
+        </div>
+        <div class="coach-result-tile stray">
+          <div class="coach-result-value" id="result-stray">0</div>
+          <div class="coach-result-label">Stray</div>
         </div>
       </div>
-      
       <div class="coach-results-summary">
         <div class="coach-score-row">
-          <span>Total Notes:</span>
-          <span id="result-total">0</span>
-        </div>
-        <div class="coach-score-row">
-          <span>Accuracy:</span>
-          <span id="result-accuracy">0%</span>
-        </div>
-        <div class="coach-score-row coach-score-final">
-          <span>Score:</span>
-          <span id="result-score">0</span>
+          <span>Passes</span>
+          <span id="result-passes">0</span>
         </div>
       </div>
-      
       <div class="coach-dialog-buttons">
         <button class="coach-btn coach-btn-secondary" id="results-close-btn">Close</button>
         <button class="coach-btn coach-btn-primary" id="results-retry-btn">Play Again</button>
@@ -71,25 +73,21 @@ export class ResultsDialog {
   }
 
   /**
-   * Show the results dialog with stats
-   * @param {Object} stats - { perfect, good, close, miss, extra, totalNotes }
+   * Show how the session went, over all its passes.
+   * @param {import('../engine/PassScore.js').Score} totals - every pass together
+   * @param {number} passes - passes played to the end
+   * @param {'clean'|'solid'|'getting-there'|'keep-at-it'} verdictKey
    */
-  show(stats) {
-    // Update values
-    this.container.querySelector('#result-perfect').textContent = stats.perfect;
-    this.container.querySelector('#result-good').textContent = stats.good;
-    this.container.querySelector('#result-close').textContent = stats.close;
-    this.container.querySelector('#result-miss').textContent = stats.miss;
-    this.container.querySelector('#result-total').textContent = stats.totalNotes;
-
-    // Calculate accuracy (perfect + good + close) / totalNotes
-    const hitCount = stats.perfect + stats.good + stats.close;
-    const accuracy = stats.totalNotes > 0 ? Math.round((hitCount / stats.totalNotes) * 100) : 0;
-    this.container.querySelector('#result-accuracy').textContent = `${accuracy}%`;
-
-    // Score: use the Engine's weighted percentage (0–100)
-    this.container.querySelector('#result-score').textContent = stats.score;
-
+  show(totals, passes, verdictKey) {
+    const q = (id) => this.container.querySelector(id);
+    q('#result-verdict').textContent = VERDICT_LABELS[verdictKey];
+    const pct = tierPercentages(totals);
+    q('#result-perfect').textContent = pct ? `${pct.perfect}%` : '–';
+    q('#result-good').textContent = pct ? `${pct.good}%` : '–';
+    q('#result-close').textContent = pct ? `${pct.close}%` : '–';
+    q('#result-missed').textContent = totals.missed;
+    q('#result-stray').textContent = totals.stray;
+    q('#result-passes').textContent = passes;
     this.container.style.display = 'block';
   }
 

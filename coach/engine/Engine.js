@@ -1,5 +1,6 @@
 import { DrumType, EditorDrumToModuleDrum } from './DrumConstants.js';
 import { evaluateHit } from './TimingEvaluator.js';
+import { emptyScore } from './PassScore.js';
 
 // Timing thresholds (ms) for matching incoming MIDI hits to expected notes
 const GRACE_NOTE_EARLY_LIMIT_MS = 20; // A grace hit can be up to this many ms late
@@ -10,9 +11,6 @@ export const NORMAL_HIT_MATCH_WINDOW_MS = 150; // Max distance from expected not
 // Used for cursor advancement (skipping old notes) and scan termination.
 // Must be >= all individual match windows to avoid skipping matchable notes.
 const SCAN_RADIUS_MS = Math.max(NORMAL_HIT_MATCH_WINDOW_MS, GRACE_NOTE_MATCH_WINDOW_MS);
-
-// Scoring weights (out of 100 per note)
-const SCORE_WEIGHTS = { perfect: 100, good: 75, close: 50 };
 
 /**
  * Engine - Manages the coaching session
@@ -67,10 +65,61 @@ export class Engine {
     this.noteTimeline.forEach((note) => {
       note.matched = false;
       note.graceMatched = false;
+      note.missed = false;
     });
     // Search cursor: index of the earliest note that could still be matched.
     // Advances monotonically during playback; each note is skipped at most once.
     this._searchCursor = 0;
+    // Miss cursor: index of the earliest note not yet known to be hit or missed.
+    this._missCursor = 0;
+  }
+
+  /**
+   * Notes whose time to be hit has passed without a graded hit. A note is past once
+   * playback is SCAN_RADIUS_MS beyond it: no hit can be matched to it after that.
+   * Each note is reported once.
+   * @param {number} timestamp - performance.now() to check at
+   * @returns {Array} the notes that became missed, in time order
+   */
+  takeMissedNotes(timestamp) {
+    const tl = this.noteTimeline;
+    const playbackTime = timestamp - this.startTime;
+    const latency = this.latencyMs();
+    const missed = [];
+    while (
+      this._missCursor < tl.length &&
+      playbackTime - (tl[this._missCursor].time + latency) > SCAN_RADIUS_MS
+    ) {
+      const note = tl[this._missCursor++];
+      if (note.matched) continue;
+      note.missed = true;
+      missed.push(note);
+    }
+    return missed;
+  }
+
+  /**
+   * End the pass: every note not hit by now is missed.
+   * @returns {Array} the notes that became missed, in time order
+   */
+  finishPass() {
+    return this.takeMissedNotes(Infinity);
+  }
+
+  /**
+   * How the current pass has gone so far: graded hits, stray hits, and the notes known
+   * to be missed. Flam grace notes are part of their flam and aren't counted on their own.
+   * @returns {import('./PassScore.js').Score}
+   */
+  passScore() {
+    const score = emptyScore();
+    for (const res of this.results) {
+      if (res.isGraceNote) continue;
+      if (res.tier === 'extra') score.stray++;
+      else score[res.tier]++;
+    }
+    score.missed = this.noteTimeline.filter((n) => n.missed).length;
+    return score;
   }
 
   /**
@@ -261,45 +310,5 @@ export class Engine {
     this.onHitEvaluated(evaluation);
 
     return evaluation;
-  }
-
-  /**
-   * Get the aggregated results
-   */
-  getResults() {
-    const stats = {
-      perfect: 0,
-      good: 0,
-      close: 0,
-      miss: 0,
-      extra: 0,
-      totalNotes: this.noteTimeline.length,
-      score: 0,
-    };
-
-    this.results.forEach((res) => {
-      if (res.isGraceNote) return; // Grace notes don't count toward score
-      if (stats[res.tier] !== undefined) {
-        stats[res.tier]++;
-      }
-    });
-
-    // Calculate misses (notes in timeline that were never matched)
-    const matchedCount = this.noteTimeline.filter((n) => n.matched).length;
-    stats.miss = stats.totalNotes - matchedCount;
-
-    // Calculate score (weighted percentage)
-    // Perfect: 100%, Good: 75%, Close: 50%, Miss: 0%
-    if (stats.totalNotes > 0) {
-      const weighted =
-        stats.perfect * SCORE_WEIGHTS.perfect +
-        stats.good * SCORE_WEIGHTS.good +
-        stats.close * SCORE_WEIGHTS.close;
-      stats.score = Math.round(weighted / stats.totalNotes);
-    } else {
-      stats.score = 0;
-    }
-
-    return stats;
   }
 }
