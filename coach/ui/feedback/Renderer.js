@@ -22,6 +22,11 @@ const PERFECT_SNAP_THRESHOLD_MS = 8;
 // Tier colors for hit feedback circles
 const TIER_COLORS = { perfect: '#00BFFF', good: '#32CD32', close: '#FFD700', extra: '#888888' };
 
+// Hits are drawn as rings around the notehead, so the note itself stays readable
+const HIT_RING_RADIUS_PX = 5;
+const HIT_RING_STROKE_PX = 1.4;
+const HIT_RING_OPACITY = 0.85;
+
 // A missed note gets a small red cross over it: the color tells it from an x notehead
 const MISS_COLOR = '#E53935';
 const MISS_CROSS_HALF_SIZE_PX = 3; // narrower than a hit circle, so the note stays readable
@@ -426,11 +431,11 @@ export class Renderer {
     circle.setAttribute('cx', x);
     circle.setAttribute('data-x', x);
     circle.setAttribute('cy', y);
-    circle.setAttribute('r', '4');
-    circle.setAttribute('fill', TIER_COLORS[tier]);
-    circle.setAttribute('fill-opacity', '0.7');
-    circle.setAttribute('stroke', 'white');
-    circle.setAttribute('stroke-width', '1.5');
+    circle.setAttribute('r', HIT_RING_RADIUS_PX);
+    circle.setAttribute('fill', 'none');
+    circle.setAttribute('stroke', TIER_COLORS[tier]);
+    circle.setAttribute('stroke-width', HIT_RING_STROKE_PX);
+    circle.setAttribute('stroke-opacity', HIT_RING_OPACITY);
     circle.setAttribute('style', 'pointer-events: none;');
     circle.setAttribute('data-measure', measureIndex);
     circle.classList.add('coach-hit-marker');
