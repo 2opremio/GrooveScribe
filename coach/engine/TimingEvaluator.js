@@ -13,10 +13,10 @@ const TIER_SPREADS = { perfect: 1, good: 2, close: 3 };
  * about 2-3% of the beat and untrained people at 4-6%.
  */
 export const TOLERANCE_LEVELS = {
-  beginner: { label: 'Beginner', spread: 0.035, description: 'Forgiving, for learning a groove' },
-  intermediate: { label: 'Intermediate', spread: 0.025, description: 'A few years of playing' },
-  advanced: { label: 'Advanced', spread: 0.02, description: 'Tight, like a seasoned player' },
-  pro: { label: 'Pro', spread: 0.015, description: 'Studio-tight' },
+  beginner: { label: 'Beginner', spread: 0.035, description: 'new to it' },
+  intermediate: { label: 'Intermediate', spread: 0.025, description: 'a few years in' },
+  advanced: { label: 'Advanced', spread: 0.02, description: 'gigging' },
+  pro: { label: 'Pro', spread: 0.015, description: 'studio' },
 };
 
 /**

@@ -3,7 +3,6 @@ import { tierPercentages } from '../engine/PassScore.js';
 const VERDICT_LABELS = {
   clean: 'Clean',
   solid: 'Solid',
-  'getting-there': 'Getting there',
   'keep-at-it': 'Keep at it',
 };
 
@@ -76,7 +75,7 @@ export class ResultsDialog {
    * Show how the session went, over all its passes.
    * @param {import('../engine/PassScore.js').Score} totals - every pass together
    * @param {number} passes - passes played to the end
-   * @param {'clean'|'solid'|'getting-there'|'keep-at-it'} verdictKey
+   * @param {'clean'|'solid'|'keep-at-it'} verdictKey
    */
   show(totals, passes, verdictKey) {
     const q = (id) => this.container.querySelector(id);
