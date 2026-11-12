@@ -8,9 +8,12 @@ import { coachState } from '../../state/State.js';
 // Timing threshold (ms) for matching a MIDI hit to a timeline note position
 const HIT_TIME_MATCH_TOLERANCE_MS = 15;
 
+// Far below any timing that matters (1 µs), far above floating-point error on times in ms
+const FLOAT_TOLERANCE_MS = 0.001;
+
 // Per-tier visual offset clamp limits (px) — constrains how far a feedback
-// circle shifts horizontally from the target note to reflect timing error
-// a stray hit drawn by its note can be up to 150 ms off; keep it close enough to read as that note's
+// circle shifts horizontally from the target note to reflect timing error.
+// A stray hit drawn by its note can be up to 150 ms off; keep it close enough to read as that note's
 const TIER_CLAMP_LIMITS = { perfect: 3, good: 8, close: 12, extra: 15 };
 
 // Horizontal offset per ms of timing error (px/ms).
@@ -467,7 +470,15 @@ export class Renderer {
    * @param {number} playedTimeMs - time since the pass started
    */
   _playAt(playedTimeMs) {
-    return this._pass * this._playsPerPass + Math.floor(playedTimeMs / this.measureDurationMs);
+    // a note on a barline must land in the play the barline starts, even when its time,
+    // computed in floating point, comes out a hair before it
+    const measure = Math.floor((playedTimeMs + FLOAT_TOLERANCE_MS) / this.measureDurationMs);
+    return this._playOfPlayedMeasure(measure);
+  }
+
+  /** The play, numbered across passes, of a measure of the current pass, as played. */
+  _playOfPlayedMeasure(playedMeasure) {
+    return this._pass * this._playsPerPass + playedMeasure;
   }
 
   /** @returns {number} the measure of the notation a play shows */
@@ -514,7 +525,7 @@ export class Renderer {
     this._playedMeasure = playedMeasure;
     if (previous === null || playedMeasure === previous) return;
     const measure = Math.floor(playedMeasure / this.repeatsPerBar);
-    this._clearer.clearMeasure(measure, this._playAt(playedMeasure * this.measureDurationMs));
+    this._clearer.clearMeasure(measure, this._playOfPlayedMeasure(playedMeasure));
     if (playedMeasure % this.repeatsPerBar === 0) return; // a new measure, not a repeat
 
     this._interpolator.cursor = 0;
