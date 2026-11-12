@@ -17,8 +17,8 @@
 
 /**
  * @typedef {Object} Goal
- * @property {number} minPerfectPercent  Blue notes, in percent of the notes hit, at least.
- * @property {number} maxClosePercent  Yellow notes, in percent of the notes hit, at most.
+ * @property {number} minPerfectPercent  Blue notes, in percent of the notes played, at least.
+ * @property {number} maxClosePercent  Yellow notes, in percent of the notes played, at most.
  */
 
 const PERCENT = 100;
@@ -43,24 +43,27 @@ export function addScores(a, b) {
   };
 }
 
-/** @param {Score} score */
-export function hitCount(score) {
-  return score.perfect + score.good + score.close;
+/**
+ * The notes played so far: hit in some tier, or missed. Stray hits belong to no note.
+ * @param {Score} score
+ */
+export function noteCount(score) {
+  return score.perfect + score.good + score.close + score.missed;
 }
 
 /**
- * Share of the notes hit in each tier, in percent. Rounded for display; the goal is
- * checked on exact shares.
+ * Share of the notes played in each tier, in percent: with the missed share, they make up
+ * every note. Rounded for display; the goal is checked on exact shares.
  * @param {Score} score
- * @returns {{perfect: number, good: number, close: number} | null} null before any note is hit
+ * @returns {{perfect: number, good: number, close: number} | null} null before any note is due
  */
 export function tierPercentages(score) {
-  const hits = hitCount(score);
-  if (hits === 0) return null;
+  const notes = noteCount(score);
+  if (notes === 0) return null;
   return {
-    perfect: Math.round((score.perfect * PERCENT) / hits),
-    good: Math.round((score.good * PERCENT) / hits),
-    close: Math.round((score.close * PERCENT) / hits),
+    perfect: Math.round((score.perfect * PERCENT) / notes),
+    good: Math.round((score.good * PERCENT) / notes),
+    close: Math.round((score.close * PERCENT) / notes),
   };
 }
 
@@ -71,10 +74,10 @@ export function tierPercentages(score) {
  * @returns {{perfect: boolean, close: boolean, missed: boolean, stray: boolean}}
  */
 export function goalChecks(score, goal) {
-  const hits = hitCount(score);
+  const notes = noteCount(score);
   return {
-    perfect: hits > 0 && score.perfect * PERCENT >= goal.minPerfectPercent * hits,
-    close: hits > 0 && score.close * PERCENT <= goal.maxClosePercent * hits,
+    perfect: notes > 0 && score.perfect * PERCENT >= goal.minPerfectPercent * notes,
+    close: notes > 0 && score.close * PERCENT <= goal.maxClosePercent * notes,
     missed: score.missed === 0,
     stray: score.stray === 0,
   };
@@ -100,13 +103,13 @@ export function isBetter(a, b) {
   const mistakesA = a.missed + a.stray;
   const mistakesB = b.missed + b.stray;
   if (mistakesA !== mistakesB) return mistakesA < mistakesB;
-  // compare shares of the notes hit without dividing: x/hitsA > y/hitsB
-  const hitsA = hitCount(a);
-  const hitsB = hitCount(b);
-  const onTimeA = (a.perfect + a.good) * hitsB;
-  const onTimeB = (b.perfect + b.good) * hitsA;
+  // compare shares of the notes played without dividing: x/notesA > y/notesB
+  const notesA = noteCount(a);
+  const notesB = noteCount(b);
+  const onTimeA = (a.perfect + a.good) * notesB;
+  const onTimeB = (b.perfect + b.good) * notesA;
   if (onTimeA !== onTimeB) return onTimeA > onTimeB;
-  return a.perfect * hitsB > b.perfect * hitsA;
+  return a.perfect * notesB > b.perfect * notesA;
 }
 
 /**
@@ -124,6 +127,6 @@ export function verdict(score, goal, fewMistakesPercent) {
   if (meetsGoal(score, goal)) return 'clean';
   const mistakes = score.missed + score.stray;
   if (mistakes === 0) return 'solid';
-  const notes = hitCount(score) + score.missed;
+  const notes = noteCount(score);
   return mistakes * PERCENT <= fewMistakesPercent * notes ? 'getting-there' : 'keep-at-it';
 }
