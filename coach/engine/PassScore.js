@@ -19,7 +19,8 @@
  * @typedef {Object} Goal
  * @property {number} minPerfectPercent  Blue notes, in percent of the notes played, at least.
  * @property {number} maxClosePercent  Yellow notes, in percent of the notes played, at most.
- * @property {number} maxMissedPercent  Missed notes, in percent of the notes played, at most.
+ * @property {number} maxMistakesPercent  Missed notes and stray hits, in percent of the notes
+ *   played, at most.
  */
 
 const PERCENT = 100;
@@ -42,6 +43,15 @@ export function addScores(a, b) {
     missed: a.missed + b.missed,
     stray: a.stray + b.stray,
   };
+}
+
+/**
+ * Missed notes and stray hits. A stray hit that was an imprecise attempt at a note that
+ * ended up missed is already that note's miss, and isn't in the stray count.
+ * @param {Score} score
+ */
+export function mistakeCount(score) {
+  return score.missed + score.stray;
 }
 
 /**
@@ -72,15 +82,14 @@ export function tierPercentages(score) {
  * Each condition of the goal, for a score so far or a finished pass.
  * @param {Score} score
  * @param {Goal} goal
- * @returns {{perfect: boolean, close: boolean, missed: boolean, stray: boolean}}
+ * @returns {{perfect: boolean, close: boolean, mistakes: boolean}}
  */
 export function goalChecks(score, goal) {
   const notes = noteCount(score);
   return {
     perfect: notes > 0 && score.perfect * PERCENT >= goal.minPerfectPercent * notes,
     close: notes > 0 && score.close * PERCENT <= goal.maxClosePercent * notes,
-    missed: score.missed * PERCENT <= goal.maxMissedPercent * notes,
-    stray: score.stray === 0,
+    mistakes: mistakeCount(score) * PERCENT <= goal.maxMistakesPercent * notes,
   };
 }
 
@@ -101,8 +110,8 @@ export function meetsGoal(score, goal) {
  * @returns {boolean} whether a is better than b
  */
 export function isBetter(a, b) {
-  const mistakesA = a.missed + a.stray;
-  const mistakesB = b.missed + b.stray;
+  const mistakesA = mistakeCount(a);
+  const mistakesB = mistakeCount(b);
   if (mistakesA !== mistakesB) return mistakesA < mistakesB;
   // compare shares of the notes played without dividing: x/notesA > y/notesB
   const notesA = noteCount(a);
@@ -126,7 +135,7 @@ export function isBetter(a, b) {
  */
 export function verdict(score, goal, fewMistakesPercent) {
   if (meetsGoal(score, goal)) return 'clean';
-  const mistakes = score.missed + score.stray;
+  const mistakes = mistakeCount(score);
   if (mistakes === 0) return 'solid';
   const notes = noteCount(score);
   return mistakes * PERCENT <= fewMistakesPercent * notes ? 'getting-there' : 'keep-at-it';

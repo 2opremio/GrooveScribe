@@ -48,14 +48,34 @@ describe('Drum Coach engine scoring', () => {
     expect(engine.handleMidiHit(DrumType.KICK, engine.startTime + 10).tier).toBe('perfect');
   });
 
-  it('puts every note of a finished pass in exactly one tier and counts stray hits', () => {
+  it('puts every note of a finished pass in exactly one tier', () => {
+    const engine = playingEngine(kicks, 91);
+    engine.handleMidiHit(DrumType.KICK, engine.startTime + 90); // way off the first kick
+    engine.finishPass();
+    expect(notesInTiers(engine.passScore())).toBe(kicks.length);
+  });
+
+  it('counts a way-off attempt at a note that ends up missed as one mistake, the miss', () => {
     const engine = playingEngine(kicks, 91);
     engine.handleMidiHit(DrumType.KICK, engine.startTime + 90); // way off the first kick
     engine.finishPass();
     const score = engine.passScore();
-    expect(notesInTiers(score)).toBe(kicks.length);
     expect(score.missed).toBe(2);
-    expect(score.stray).toBe(1);
+    expect(score.stray).toBe(0);
+  });
+
+  it('counts a way-off hit next to a note that was hit after all as a stray hit', () => {
+    const engine = playingEngine(kicks, 91);
+    engine.handleMidiHit(DrumType.KICK, engine.startTime + 90); // way off the first kick
+    engine.handleMidiHit(DrumType.KICK, engine.startTime + 5); // then the first kick, on time
+    engine.finishPass();
+    expect(engine.passScore().stray).toBe(1);
+  });
+
+  it('counts a hit with no note in reach as a stray hit', () => {
+    const engine = playingEngine([{ time: 0, type: DrumType.SNARE }], 400);
+    engine.handleMidiHit(DrumType.KICK, engine.startTime + 300);
+    expect(engine.passScore().stray).toBe(1);
   });
 
   it('reports a note as missed only once no hit can be graded against it any more', () => {

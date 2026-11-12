@@ -56,10 +56,10 @@ export class SettingsDialog {
             ${number('coach-goal-yellow-input', '%', 'min="0" max="100" step="1"')}
           </div>
           <div class="coach-settings-row">
-            <label for="coach-goal-missed-input"><span class="coach-settings-red">Missed</span> at most</label>
-            ${number('coach-goal-missed-input', '%', 'min="0" max="100" step="1"')}
+            <label for="coach-goal-mistakes-input"><span class="coach-settings-red">Mistakes</span> at most</label>
+            ${number('coach-goal-mistakes-input', '%', 'min="0" max="100" step="1"')}
           </div>
-          <div class="coach-settings-row"><span class="coach-settings-note">and no stray hits</span></div>
+          <div class="coach-settings-row"><span class="coach-settings-note">missed notes and stray hits</span></div>
         </section>
 
         <section class="coach-settings-card">
@@ -187,8 +187,8 @@ export class SettingsDialog {
     this.container.querySelector('#coach-auto-bpm-passes-input').value = coachState.autoBpmPasses;
     this.container.querySelector('#coach-goal-blue-input').value = coachState.goalMinPerfectPercent;
     this.container.querySelector('#coach-goal-yellow-input').value = coachState.goalMaxClosePercent;
-    this.container.querySelector('#coach-goal-missed-input').value =
-      coachState.goalMaxMissedPercent;
+    this.container.querySelector('#coach-goal-mistakes-input').value =
+      coachState.goalMaxMistakesPercent;
 
     this.container.querySelector('#coach-calib-hint').hidden = coachState.calibrated;
 
@@ -240,8 +240,8 @@ export class SettingsDialog {
     coachState.autoBpmPasses = this.container.querySelector('#coach-auto-bpm-passes-input').value;
     coachState.goalMinPerfectPercent = this.container.querySelector('#coach-goal-blue-input').value;
     coachState.goalMaxClosePercent = this.container.querySelector('#coach-goal-yellow-input').value;
-    coachState.goalMaxMissedPercent = this.container.querySelector(
-      '#coach-goal-missed-input'
+    coachState.goalMaxMistakesPercent = this.container.querySelector(
+      '#coach-goal-mistakes-input'
     ).value;
     coachState.save();
   }
