@@ -486,6 +486,11 @@ export class Renderer {
     return play < this._clearer.keptFrom(this._measureOfPlay(play));
   }
 
+  /** Whether the playline is on the last play of the measure it's in. */
+  _onLastRepeat() {
+    return this._playedMeasure % this.repeatsPerBar === this.repeatsPerBar - 1;
+  }
+
   /** @returns {number} the measure of the notation a play shows */
   _measureOfPlay(play) {
     const plays = this._playsPerPass;
@@ -879,11 +884,15 @@ export class Renderer {
     this._followRepeats(playedTimeMs, timeMs);
 
     // --- Threshold-based clearing ---
-    this._clearer.tick(
-      timeMs,
-      (t) => this._getMeasureIndex(t),
-      (m) => this._nextFirstPlayOf(m)
-    );
+    // The next measure is cleared ahead only while its turn is coming: on the last play of
+    // the current measure, not on an earlier repeat of it.
+    if (this._onLastRepeat()) {
+      this._clearer.tick(
+        timeMs,
+        (t) => this._getMeasureIndex(t),
+        (m) => this._nextFirstPlayOf(m)
+      );
+    }
 
     // Enable rendering (playline + circles) at the actual M0 barline
     // time — NOT at the CLEAR_AHEAD early trigger which is only for
