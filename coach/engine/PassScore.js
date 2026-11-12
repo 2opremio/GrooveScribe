@@ -19,6 +19,7 @@
  * @typedef {Object} Goal
  * @property {number} minPerfectPercent  Blue notes, in percent of the notes played, at least.
  * @property {number} maxClosePercent  Yellow notes, in percent of the notes played, at most.
+ * @property {number} maxMissedPercent  Missed notes, in percent of the notes played, at most.
  */
 
 const PERCENT = 100;
@@ -78,7 +79,7 @@ export function goalChecks(score, goal) {
   return {
     perfect: notes > 0 && score.perfect * PERCENT >= goal.minPerfectPercent * notes,
     close: notes > 0 && score.close * PERCENT <= goal.maxClosePercent * notes,
-    missed: score.missed === 0,
+    missed: score.missed * PERCENT <= goal.maxMissedPercent * notes,
     stray: score.stray === 0,
   };
 }
@@ -115,7 +116,7 @@ export function isBetter(a, b) {
 /**
  * One word for how a session went.
  *  - clean: meets the goal
- *  - solid: no mistakes, but short of the blue or yellow target
+ *  - solid: no mistakes, but short of the goal's targets
  *  - getting-there: mistakes on at most fewMistakesPercent of the notes
  *  - keep-at-it: more mistakes than that
  * @param {Score} score

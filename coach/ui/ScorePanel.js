@@ -124,7 +124,9 @@ function goalHtml(goal) {
     item(checks && checks.close, `yellow ${goal.targets.maxClosePercent}% or less`) +
     item(
       checks && checks.missed,
-      checks && !checks.missed ? `${score.missed} missed` : 'none missed'
+      checks
+        ? `${score.missed} missed (${goal.targets.maxMissedPercent}% max)`
+        : `missed ${goal.targets.maxMissedPercent}% or less`
     ) +
     item(checks && checks.stray, checks && !checks.stray ? strayText(score.stray) : 'no stray hits')
   );

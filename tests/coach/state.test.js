@@ -8,12 +8,13 @@ describe('Drum Coach settings', () => {
     saved.autoBpmPasses = 3;
     saved.goalMinPerfectPercent = 60;
     saved.goalMaxClosePercent = 5;
+    saved.goalMaxMissedPercent = 3;
     saved.fewMistakesPercent = 8;
 
     const loaded = new StateManager();
     loaded.fromObject(JSON.parse(JSON.stringify(saved.toObject())));
     expect(loaded.toObject()).toEqual(saved.toObject());
-    expect(loaded.goal).toEqual({ minPerfectPercent: 60, maxClosePercent: 5 });
+    expect(loaded.goal).toEqual({ minPerfectPercent: 60, maxClosePercent: 5, maxMissedPercent: 3 });
   });
 
   it('keeps settings saved before the new ones existed, with defaults for the rest', () => {
