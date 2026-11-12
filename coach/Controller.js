@@ -27,9 +27,6 @@ import {
 // velocity given to hits simulated from the keyboard (k/s/h); a firm, non-accented hit
 const DEBUG_KEY_VELOCITY = 100;
 
-// BPM added by auto BPM each time enough passes meet the goal
-const AUTO_BPM_STEP = 5;
-
 /**
  * Controller - Orchestrates the entire Drum Coach feature
  */
@@ -344,11 +341,7 @@ export class Controller {
     this.isCoachingActive = false;
     this.renderer.clearAll();
     this._restoreEditorGrid();
-    this.resultsDialog.show(
-      totals,
-      this.passesPlayed,
-      verdict(totals, coachState.goal, coachState.fewMistakesPercent)
-    );
+    this.resultsDialog.show(totals, this.passesPlayed, verdict(totals, coachState.goal));
   }
 
   /**
@@ -372,7 +365,7 @@ export class Controller {
       if (this.goalStreak >= coachState.autoBpmPasses) {
         this.goalStreak = 0;
         const utils = this.grooveWriter.myGrooveUtils;
-        utils.setTempo(utils.getTempo() + AUTO_BPM_STEP);
+        utils.setTempo(utils.getTempo() + coachState.autoBpmStep);
         // the best at this tempo is now the best at the new one
         this.bestKey = this._bestKey();
       }
@@ -465,7 +458,7 @@ export class Controller {
       best: this.bestScores.get(this.bestKey) ?? null,
       goal: showGoal
         ? {
-            nextTempo: this.grooveWriter.myGrooveUtils.getTempo() + AUTO_BPM_STEP,
+            nextTempo: this.grooveWriter.myGrooveUtils.getTempo() + coachState.autoBpmStep,
             checks: current ? goalChecks(current, coachState.goal) : null,
             targets: coachState.goal,
             score: current,

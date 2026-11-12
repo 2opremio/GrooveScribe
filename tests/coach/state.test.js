@@ -9,7 +9,7 @@ describe('Drum Coach settings', () => {
     saved.goalMinPerfectPercent = 60;
     saved.goalMaxClosePercent = 5;
     saved.goalMaxMistakesPercent = 3;
-    saved.fewMistakesPercent = 8;
+    saved.autoBpmStep = 3;
 
     const loaded = new StateManager();
     loaded.fromObject(JSON.parse(JSON.stringify(saved.toObject())));

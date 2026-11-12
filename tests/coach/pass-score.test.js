@@ -10,7 +10,6 @@ import {
 } from '../../coach/engine/PassScore.js';
 
 const GOAL = { minPerfectPercent: 50, maxClosePercent: 10, maxMistakesPercent: 2 };
-const FEW_MISTAKES_PERCENT = 5;
 const score = (fields) => ({ ...emptyScore(), ...fields });
 
 describe('Drum Coach pass goal', () => {
@@ -71,18 +70,18 @@ describe('Drum Coach best pass', () => {
 });
 
 describe('Drum Coach session verdict', () => {
-  const v = (fields) => verdict(score(fields), GOAL, FEW_MISTAKES_PERCENT);
+  const v = (fields) => verdict(score(fields), GOAL);
 
   it('rates a session meeting the goal as clean', () => {
     expect(v({ perfect: 90, good: 10 })).toBe('clean');
   });
 
-  it('rates a session without mistakes but short of the targets as solid', () => {
+  it('rates a session within the mistakes budget but short on timing as solid', () => {
     expect(v({ perfect: 10, good: 70, close: 20 })).toBe('solid');
+    expect(v({ perfect: 10, good: 88, close: 1, missed: 1 })).toBe('solid');
   });
 
-  it('separates a few mistakes from many by their share of the notes', () => {
-    expect(v({ perfect: 97, missed: 2, stray: 1 })).toBe('getting-there'); // 3 of 99 notes
+  it('rates a session over the mistakes budget as keep at it, however good its timing', () => {
     expect(v({ perfect: 90, missed: 10 })).toBe('keep-at-it');
   });
 
