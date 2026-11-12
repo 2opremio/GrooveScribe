@@ -1,7 +1,6 @@
 import { DrumType } from '../../engine/DrumConstants.js';
 import { PlaylineInterpolator } from './PlaylineInterpolator.js';
 import { MeasureClearer } from './MeasureClearer.js';
-import { shownMeasurePosition } from '../../../js/noteTiming.js';
 
 import { coachState } from '../../state/State.js';
 
@@ -304,12 +303,7 @@ export class Renderer {
     // Build interpolation data eagerly so thresholds are
     // available before scheduleMeasureClearing is called.
     this._interpolator.build(this.systems);
-    this._clearer.init(
-      this.systems,
-      this.svgLayers,
-      this._interpolator.thresholds,
-      this.measureDurationMs
-    );
+    this._clearer.init(this.svgLayers, this._interpolator.thresholds, this.measureDurationMs);
 
     if (coachState.showDebugGrid) {
       this.renderDebugGrid();
@@ -352,6 +346,8 @@ export class Renderer {
     const layer = this.svgLayers[found.layerIndex]?.layer;
     if (!layer) return;
 
+    const play = this._playAt(playedTimeMs);
+    if (this._isCleared(play)) return;
     const { x, y } = found.note;
     const d = MISS_CROSS_HALF_SIZE_PX;
     const cross = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -362,7 +358,8 @@ export class Renderer {
     cross.setAttribute('fill', 'none');
     cross.setAttribute('style', 'pointer-events: none;');
     cross.setAttribute('data-x', x);
-    cross.setAttribute('data-play', this._playAt(playedTimeMs));
+    cross.setAttribute('data-play', play);
+    cross.setAttribute('data-measure', this._measureOfPlay(play));
     cross.classList.add('coach-hit-marker');
     layer.appendChild(cross);
   }
@@ -481,6 +478,14 @@ export class Renderer {
     return this._pass * this._playsPerPass + playedMeasure;
   }
 
+  /**
+   * Whether a play's measure has already been cleared for a later play: a mark for it, drawn
+   * now, would sit through that later play.
+   */
+  _isCleared(play) {
+    return play < this._clearer.keptFrom(this._measureOfPlay(play));
+  }
+
   /** @returns {number} the measure of the notation a play shows */
   _measureOfPlay(play) {
     const plays = this._playsPerPass;
@@ -507,8 +512,12 @@ export class Renderer {
    * @returns {number}
    */
   _shownTimeMs(playedTimeMs) {
-    const playedMeasures = playedTimeMs / this.measureDurationMs;
-    return shownMeasurePosition(playedMeasures, this.repeatsPerBar) * this.measureDurationMs;
+    // a note on a barline is in the measure the barline starts, even when its time, computed
+    // in floating point, comes out a hair before it (else it's looked up a measure too far)
+    const md = this.measureDurationMs;
+    const playedMeasure = Math.floor((playedTimeMs + FLOAT_TOLERANCE_MS) / md);
+    const intoMeasureMs = Math.max(0, playedTimeMs - playedMeasure * md);
+    return Math.floor(playedMeasure / this.repeatsPerBar) * md + intoMeasureMs;
   }
 
   /**
@@ -547,7 +556,7 @@ export class Renderer {
 
   _drawCircle(x, y, tier, layerIndex, play) {
     const layer = this.svgLayers[layerIndex]?.layer;
-    if (!layer) return;
+    if (!layer || this._isCleared(play)) return;
 
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', x);
@@ -560,6 +569,7 @@ export class Renderer {
     circle.setAttribute('stroke-opacity', HIT_RING_OPACITY);
     circle.setAttribute('style', 'pointer-events: none;');
     circle.setAttribute('data-play', play);
+    circle.setAttribute('data-measure', this._measureOfPlay(play));
     circle.classList.add('coach-hit-marker');
 
     layer.appendChild(circle);

@@ -318,14 +318,14 @@ export class Controller {
     this.renderer.scheduleMeasureClearing(0);
     this._refreshScorePanel();
 
+    // The pass has started, so its marks may be drawn, whether or not an animation frame
+    // has turned rendering on at the loop point yet (idempotent on later passes).
+    this.renderer.enableRendering();
+
     // grade the hits that arrived for this pass before it started
     const waiting = this.nextPassHits;
     this.nextPassHits = [];
     for (const hit of waiting) this.handleMidiHit(hit.drum, hit.timestamp, hit.velocity);
-
-    // Rendering was enabled at M0 barline during count-in.
-    // Re-enable here for subsequent repeats (idempotent).
-    this.renderer.enableRendering();
 
     // Playline was already started during count-in.
     // The closure captures `this` so it reads the updated sessionStartTime.
@@ -426,6 +426,7 @@ export class Controller {
 
   /** Mark notes as missed as soon as their time to be hit has passed. */
   _startWatchingMisses() {
+    this._stopWatchingMisses(); // a restart mid-pass must not leave a second watcher running
     const watch = () => {
       if (this.engine.isPlaying) {
         const missed = this.engine.takeMissedNotes(performance.now());
@@ -600,6 +601,8 @@ export class Controller {
    */
   stopSession() {
     this.isCoachingActive = false;
+    this.countInPlaying = false;
+    this.nextPassHits = [];
     this._stopWatchingMisses();
     this.engine.stop();
     this.renderer.clearAll();
