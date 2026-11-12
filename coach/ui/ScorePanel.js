@@ -7,6 +7,7 @@ import { tierPercentages } from '../engine/PassScore.js';
 export class ScorePanel {
   constructor() {
     this.container = null;
+    this.onRecenter = null; // () => void, when the player asks to re-center on the last pass
   }
 
   inject() {
@@ -26,6 +27,9 @@ export class ScorePanel {
       <div class="coach-score-goal"></div>
     `;
     sheet.parentElement.insertBefore(panel, sheet);
+    panel.addEventListener('click', (e) => {
+      if (e.target.closest('[data-recenter]')) this.onRecenter();
+    });
     this.container = panel;
   }
 
@@ -40,7 +44,10 @@ export class ScorePanel {
   /**
    * @param {Object} view
    * @param {import('../engine/PassScore.js').Score|null} view.current - this pass so far
+   * @param {number|null} view.currentOffset - typical timing error this pass so far, ms
    * @param {import('../engine/PassScore.js').Score|null} view.last
+   * @param {number|null} view.lastOffset - typical timing error of the last pass, ms
+   * @param {boolean} view.lastRecentered - the calibration was re-centered on the last pass
    * @param {import('../engine/PassScore.js').Score|null} view.best
    * @param {Object|null} view.goal - null when auto BPM is off
    * @param {number} view.goal.nextTempo
@@ -52,8 +59,14 @@ export class ScorePanel {
    * @param {number} view.goal.passesNeeded
    */
   update(view) {
+    const offsets = {
+      current: offsetHtml(view.currentOffset, ''),
+      last: offsetHtml(view.lastOffset, recenterHtml(view.lastOffset, view.lastRecentered)),
+      best: '',
+    };
     for (const which of ['current', 'last', 'best']) {
-      this.container.querySelector(`[data-score="${which}"]`).innerHTML = scoreHtml(view[which]);
+      this.container.querySelector(`[data-score="${which}"]`).innerHTML =
+        scoreHtml(view[which]) + offsets[which];
     }
     const goalEl = this.container.querySelector('.coach-score-goal');
     goalEl.style.display = view.goal ? 'flex' : 'none';
@@ -68,6 +81,22 @@ function scoreHtml(score) {
     ? `<span class="perfect">${pct.perfect}%</span><span class="good">${pct.good}%</span><span class="close">${pct.close}%</span>`
     : '<span class="coach-score-none">–</span>';
   return `<div class="coach-score-nums">${nums}</div><div class="coach-score-missed">${score.missed} missed</div>`;
+}
+
+/** How early or late a pass was, typically, and what can be done about it. */
+function offsetHtml(offsetMs, action) {
+  if (offsetMs === null) return '';
+  const ms = Math.round(offsetMs);
+  let text = 'on time';
+  if (ms < 0) text = `${-ms} ms early`;
+  if (ms > 0) text = `${ms} ms late`;
+  return `<div class="coach-score-offset">${text}${action}</div>`;
+}
+
+function recenterHtml(offsetMs, recentered) {
+  if (recentered) return ' <span class="coach-score-recentered">re-centered</span>';
+  if (Math.round(offsetMs) === 0) return '';
+  return ' <button type="button" class="coach-score-recenter" data-recenter>Re-center</button>';
 }
 
 function goalHtml(goal) {

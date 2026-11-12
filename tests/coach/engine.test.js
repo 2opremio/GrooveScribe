@@ -77,3 +77,32 @@ describe('Drum Coach engine scoring', () => {
     expect(engine.passScore()).toEqual({ perfect: 0, good: 0, close: 0, missed: 0, stray: 0 });
   });
 });
+
+describe('Drum Coach pass timing offset', () => {
+  // three notes on different drums, so each hit can only be graded against its own note
+  const NOW_MS = 1010;
+  const notes = [
+    { time: 900, type: DrumType.KICK },
+    { time: 950, type: DrumType.SNARE },
+    { time: 1000, type: DrumType.HH_CLOSED },
+  ];
+
+  it('is the typical error of the graded hits, early being negative', () => {
+    const engine = playingEngine(notes, NOW_MS);
+    engine.handleMidiHit(DrumType.KICK, engine.startTime + 900 - 12);
+    engine.handleMidiHit(DrumType.SNARE, engine.startTime + 950 - 30);
+    engine.handleMidiHit(DrumType.HH_CLOSED, engine.startTime + 1000 + 4);
+    expect(engine.passTimingOffset()).toBeCloseTo(-12);
+  });
+
+  it('ignores stray hits, which belong to no note', () => {
+    const engine = playingEngine(notes, NOW_MS);
+    engine.handleMidiHit(DrumType.KICK, engine.startTime + 900 - 10);
+    engine.handleMidiHit(DrumType.SNARE, engine.startTime + 950 + 90); // too late to grade
+    expect(engine.passTimingOffset()).toBeCloseTo(-10);
+  });
+
+  it('is unknown before any hit is graded', () => {
+    expect(playingEngine(notes, NOW_MS).passTimingOffset()).toBeNull();
+  });
+});

@@ -68,6 +68,8 @@ export class Controller {
     this.countInPlaying = false; // the count-in runs before the first graded pass
     this.nextPassHits = []; // hits waiting for the next pass to start; see _fitsNextPass
     this.lastPassScore = null; // the last pass played to the end
+    this.lastPassOffset = null; // median timing error of the last pass, ms; see _recenter
+    this.lastPassRecentered = false; // the calibration was re-centered on the last pass
     this.bestScores = new Map(); // best pass this session, by groove and tempo; see _bestKey
     this.bestKey = null; // _bestKey() of the groove being coached
     this.sessionTotals = emptyScore(); // every pass played to the end in this session
@@ -105,6 +107,7 @@ export class Controller {
     this.dialog.inject();
     this.resultsDialog.inject();
     this.scorePanel.inject();
+    this.scorePanel.onRecenter = () => this._recenter();
     this.calibrationDialog.inject();
     this.drumMapDialog.inject();
 
@@ -356,6 +359,8 @@ export class Controller {
     for (const note of this.engine.finishPass()) this._drawMiss(note);
     const score = this.engine.passScore();
     this.lastPassScore = score;
+    this.lastPassOffset = this.engine.passTimingOffset();
+    this.lastPassRecentered = false;
     this.sessionTotals = addScores(this.sessionTotals, score);
     this.passesPlayed++;
 
@@ -430,12 +435,26 @@ export class Controller {
     this._missWatchId = null;
   }
 
+  /**
+   * Shift the calibration by how early or late the last pass was, so playing like that pass
+   * grades as on time. Takes effect from the next hit.
+   */
+  _recenter() {
+    coachState.calibrationOffset = coachState.calibrationOffset + Math.round(this.lastPassOffset);
+    coachState.save();
+    this.lastPassRecentered = true;
+    this._refreshScorePanel();
+  }
+
   _refreshScorePanel() {
     const current = this.engine.isPlaying ? this.engine.passScore() : null;
     const showGoal = coachState.mode === 'practice' && coachState.autoBpm;
     this.scorePanel.update({
       current,
+      currentOffset: this.engine.isPlaying ? this.engine.passTimingOffset() : null,
       last: this.lastPassScore,
+      lastOffset: this.lastPassOffset,
+      lastRecentered: this.lastPassRecentered,
       best: this.bestScores.get(this.bestKey) ?? null,
       goal: showGoal
         ? {
@@ -464,6 +483,8 @@ export class Controller {
       this.timelineTempo = this.grooveWriter.myGrooveUtils.getTempo();
       this.bestKey = this._bestKey();
       this.lastPassScore = null;
+      this.lastPassOffset = null;
+      this.lastPassRecentered = false;
       this.sessionTotals = emptyScore();
       this.passesPlayed = 0;
       this.goalStreak = 0;
