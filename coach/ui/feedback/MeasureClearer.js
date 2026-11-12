@@ -3,7 +3,7 @@
  *
  * Clears old feedback circles before the playline crosses each barline.
  * Uses precomputed geometric thresholds from PlaylineInterpolator to
- * determine when to clear. Clearing is spatial: all circles whose cx
+ * determine when to clear. Clearing is spatial: all markers whose x
  * falls within the measure's X boundaries are removed from the DOM.
  *
  * ## Usage
@@ -95,7 +95,7 @@ export class MeasureClearer {
   }
 
   /**
-   * Remove all feedback circles whose cx falls within the X boundaries
+   * Remove all feedback markers whose x falls within the X boundaries
    * of the given measure. Finds the measure in the correct system and
    * layer automatically.
    */
@@ -112,8 +112,8 @@ export class MeasureClearer {
       if (!layer) continue;
 
       layer.querySelectorAll('.coach-hit-marker').forEach((el) => {
-        const cx = parseFloat(el.getAttribute('cx'));
-        if (cx >= leftX && cx < rightX) {
+        const x = parseFloat(el.getAttribute('data-x'));
+        if (x >= leftX && x < rightX) {
           el.remove();
         }
       });

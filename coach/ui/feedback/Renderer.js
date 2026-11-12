@@ -22,6 +22,11 @@ const PERFECT_SNAP_THRESHOLD_MS = 8;
 // Tier colors for hit feedback circles
 const TIER_COLORS = { perfect: '#00BFFF', good: '#32CD32', close: '#FFD700', extra: '#888888' };
 
+// A missed note gets a red cross over it, larger than an x notehead so it can't read as one
+const MISS_COLOR = '#E53935';
+const MISS_CROSS_HALF_SIZE_PX = 5;
+const MISS_CROSS_STROKE_PX = 2.2;
+
 // Debug label layout: how far above clampTop to extend barlines for label clearance
 const DEBUG_LABEL_EXTEND_PX = 0;
 // Horizontal gap between barline and label text
@@ -57,7 +62,7 @@ const DEBUG_LABEL_NUDGE_PX = 2;
  *
  * Feedback circles are cleared per-measure just before the playline
  * crosses each barline, using precomputed geometric thresholds. Clearing
- * is spatial: all circles whose cx falls within the measure's X range
+ * is spatial: all markers whose x falls within the measure's X range
  * are removed from the DOM.
  */
 export class Renderer {
@@ -292,26 +297,9 @@ export class Renderer {
   drawHitFeedbackByTime(hitTimeMs, tier, timingError, drumType, abcNoteIndex = null) {
     if (!this._renderingEnabled || this.systems.length === 0) return;
 
-    const isGrace = drumType === DrumType.FLAM_GRACE;
-
-    // Search across all systems for matching note
-    let note = null;
-    let targetLayerIndex = 0;
-    for (const sys of this.systems) {
-      note = sys.timeline.find(
-        (n) =>
-          Math.abs(n.timeMs - hitTimeMs) < HIT_TIME_MATCH_TOLERANCE_MS &&
-          n.type === drumType &&
-          n.isGrace === isGrace &&
-          (abcNoteIndex === null || n.abcIndex === abcNoteIndex)
-      );
-      if (note) {
-        targetLayerIndex = sys.layerIndex;
-        break;
-      }
-    }
-
-    if (!note) return;
+    const found = this._findNote(hitTimeMs, drumType, abcNoteIndex);
+    if (!found) return;
+    const { note, layerIndex: targetLayerIndex } = found;
 
     // Timing-based visual offset
     const clampLimit = TIER_CLAMP_LIMITS[tier];
@@ -321,6 +309,54 @@ export class Renderer {
 
     const measureIndex = this._getMeasureIndex(hitTimeMs);
     this._drawCircle(note.x + xOffset, note.y, tier, targetLayerIndex, measureIndex);
+  }
+
+  /**
+   * Draw a red cross over a note that wasn't hit in time.
+   * @param {number} playedTimeMs - the note's time in the pass
+   * @param {string} drumType - the note's drum
+   * @param {number|null} abcNoteIndex - the note's ABC index, when known
+   */
+  drawMiss(playedTimeMs, drumType, abcNoteIndex) {
+    if (!this._renderingEnabled || this.systems.length === 0) return;
+    const shownTimeMs = this._shownTimeMs(playedTimeMs);
+    const found = this._findNote(shownTimeMs, drumType, abcNoteIndex);
+    if (!found) return;
+    const layer = this.svgLayers[found.layerIndex]?.layer;
+    if (!layer) return;
+
+    const { x, y } = found.note;
+    const d = MISS_CROSS_HALF_SIZE_PX;
+    const cross = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    cross.setAttribute('d', `M${x - d} ${y - d}l${2 * d} ${2 * d}m0 ${-2 * d}l${-2 * d} ${2 * d}`);
+    cross.setAttribute('stroke', MISS_COLOR);
+    cross.setAttribute('stroke-width', MISS_CROSS_STROKE_PX);
+    cross.setAttribute('stroke-linecap', 'round');
+    cross.setAttribute('fill', 'none');
+    cross.setAttribute('style', 'pointer-events: none;');
+    cross.setAttribute('data-x', x);
+    cross.setAttribute('data-measure', this._getMeasureIndex(shownTimeMs));
+    cross.classList.add('coach-hit-marker');
+    layer.appendChild(cross);
+  }
+
+  /**
+   * The drawn note at a time in the notation, for a drum.
+   * @returns {{note: Object, layerIndex: number} | null}
+   */
+  _findNote(shownTimeMs, drumType, abcNoteIndex) {
+    const isGrace = drumType === DrumType.FLAM_GRACE;
+    for (const sys of this.systems) {
+      const note = sys.timeline.find(
+        (n) =>
+          Math.abs(n.timeMs - shownTimeMs) < HIT_TIME_MATCH_TOLERANCE_MS &&
+          n.type === drumType &&
+          n.isGrace === isGrace &&
+          (abcNoteIndex === null || n.abcIndex === abcNoteIndex)
+      );
+      if (note) return { note, layerIndex: sys.layerIndex };
+    }
+    return null;
   }
 
   /**
@@ -388,6 +424,7 @@ export class Renderer {
 
     const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     circle.setAttribute('cx', x);
+    circle.setAttribute('data-x', x);
     circle.setAttribute('cy', y);
     circle.setAttribute('r', '4');
     circle.setAttribute('fill', TIER_COLORS[tier]);

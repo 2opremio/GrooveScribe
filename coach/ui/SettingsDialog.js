@@ -29,6 +29,39 @@ export class SettingsDialog {
           <label>Repetitions</label>
           <input type="number" id="coach-reps-input" min="2" max="16" value="4">
         </div>
+        <div class="coach-setting-row">
+          <label>Few Mistakes Up To</label>
+          <span class="coach-latency-group">
+            <input type="number" id="coach-few-mistakes-input" min="0" max="100" step="1"> % of notes
+          </span>
+        </div>
+      </div>
+
+      <div id="practice-options">
+        <div class="coach-setting-row">
+          <label>Auto BPM</label>
+          <span class="coach-latency-group">
+            <input type="checkbox" id="coach-auto-bpm-check"> +5 when a pass meets the goal
+          </span>
+        </div>
+        <div class="coach-setting-row">
+          <label>Passes in a Row</label>
+          <input type="number" id="coach-auto-bpm-passes-input" min="1" step="1">
+        </div>
+      </div>
+
+      <div class="coach-setting-row">
+        <label>Goal: Blue</label>
+        <span class="coach-latency-group">
+          at least <input type="number" id="coach-goal-blue-input" min="0" max="100" step="1"> %
+        </span>
+      </div>
+
+      <div class="coach-setting-row">
+        <label>Goal: Yellow</label>
+        <span class="coach-latency-group">
+          at most <input type="number" id="coach-goal-yellow-input" min="0" max="100" step="1"> %
+        </span>
       </div>
       
       <div class="coach-setting-row">
@@ -110,8 +143,10 @@ export class SettingsDialog {
     const startBtn = this.container.querySelector('#coach-start-btn');
     const cancelBtn = this.container.querySelector('#coach-cancel-btn');
 
+    const practiceOptions = this.container.querySelector('#practice-options');
     modeSelect.addEventListener('change', () => {
       perfOptions.style.display = modeSelect.value === 'performance' ? 'block' : 'none';
+      practiceOptions.style.display = modeSelect.value === 'practice' ? 'block' : 'none';
     });
 
     this.container.querySelector('#coach-calibrate-btn').addEventListener('click', () => {
@@ -160,6 +195,13 @@ export class SettingsDialog {
 
     this.container.querySelector('#performance-options').style.display =
       coachState.mode === 'performance' ? 'block' : 'none';
+    this.container.querySelector('#practice-options').style.display =
+      coachState.mode === 'practice' ? 'block' : 'none';
+    this.container.querySelector('#coach-few-mistakes-input').value = coachState.fewMistakesPercent;
+    this.container.querySelector('#coach-auto-bpm-check').checked = coachState.autoBpm;
+    this.container.querySelector('#coach-auto-bpm-passes-input').value = coachState.autoBpmPasses;
+    this.container.querySelector('#coach-goal-blue-input').value = coachState.goalMinPerfectPercent;
+    this.container.querySelector('#coach-goal-yellow-input').value = coachState.goalMaxClosePercent;
 
     this.container.querySelector('#coach-calib-hint').style.display = coachState.calibrated
       ? 'none'
@@ -200,6 +242,11 @@ export class SettingsDialog {
     coachState.metronomeVolume = parseInt(
       this.container.querySelector('#coach-metronome-vol').value
     );
+    coachState.fewMistakesPercent = this.container.querySelector('#coach-few-mistakes-input').value;
+    coachState.autoBpm = this.container.querySelector('#coach-auto-bpm-check').checked;
+    coachState.autoBpmPasses = this.container.querySelector('#coach-auto-bpm-passes-input').value;
+    coachState.goalMinPerfectPercent = this.container.querySelector('#coach-goal-blue-input').value;
+    coachState.goalMaxClosePercent = this.container.querySelector('#coach-goal-yellow-input').value;
     coachState.save();
   }
 }
