@@ -29,6 +29,8 @@ const DEBUG_KEY_VELOCITY = 100;
 
 // BPM added by auto BPM each time enough passes meet the goal
 const AUTO_BPM_STEP = 5;
+// space left above the line being played when scrolling to it
+const LINE_SCROLL_MARGIN_PX = 8;
 
 /**
  * Controller - Orchestrates the entire Drum Coach feature
@@ -46,6 +48,7 @@ export class Controller {
     this.drumMapPresets = null; // Loaded in init()
     this.drumMapPresetsById = null;
     this.renderer = new FeedbackRenderer('#svgTarget');
+    this.renderer.onLineChange = (playLine) => this._scrollToLine(playLine);
     this.playerBar = new PlayerBar({
       grooveWriter,
       onStopSession: () => this.stopSession(),
@@ -268,6 +271,9 @@ export class Controller {
     );
     this._startWatchingMisses();
 
+    // show the first line during the count-in, before the playline appears on it
+    this._scrollToLine(document.getElementById('sheetMusicDiv'));
+
     if (coachState.showDebugGrid) {
       this.renderer.renderDebugGrid();
     }
@@ -441,6 +447,20 @@ export class Controller {
   _stopWatchingMisses() {
     cancelAnimationFrame(this._missWatchId);
     this._missWatchId = null;
+  }
+
+  /**
+   * Scroll a line of music to just under the score panel, so it and the line after it
+   * stay in view.
+   * @param {Element} lineTop - an element whose top is the top of the line
+   */
+  _scrollToLine(lineTop) {
+    const top = lineTop.getBoundingClientRect().top;
+    const visibleTop = this.scorePanel.container.getBoundingClientRect().bottom;
+    document.scrollingElement.scrollBy({
+      top: top - visibleTop - LINE_SCROLL_MARGIN_PX,
+      behavior: 'smooth',
+    });
   }
 
   /**

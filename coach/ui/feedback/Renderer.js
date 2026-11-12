@@ -103,6 +103,9 @@ export class Renderer {
 
     // Debug play line state
     this._playLine = null;
+    this._playLineSystem = null; // the line of music the playline is on
+    // (playLineElement) => void, called when the playline moves to another line of music
+    this.onLineChange = null;
     this._playLineRafId = null;
     this._playLineGetTime = null;
   }
@@ -792,7 +795,7 @@ export class Renderer {
   }
 
   /**
-   * Draw the playline at a point in the notation.
+   * Draw the playline at a point in the notation, and report a move to another line of music.
    * @param {Object} interp - the point, from the interpolator
    */
   _movePlayLine(interp) {
@@ -814,6 +817,11 @@ export class Renderer {
         ln.setAttribute('x2', interp.x);
         ln.setAttribute('y2', y2);
       }
+
+      if (interp.sys !== this._playLineSystem) {
+        this._playLineSystem = interp.sys;
+        if (this.onLineChange) this.onLineChange(this._playLine);
+      }
     }
   }
 
@@ -834,6 +842,7 @@ export class Renderer {
     this._playLineGetTime = null;
     this._renderingEnabled = false;
     this._lastGeoMeasure = -1;
+    this._playLineSystem = null;
   }
 
   /**
