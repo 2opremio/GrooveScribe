@@ -317,7 +317,14 @@ export class Engine {
       } else {
         // Outside every grading window: a stray hit, and the note stays open for a
         // better-timed one (or counts as missed), so each note lands in exactly one tier.
-        evaluation = { timingError: 0, tier: 'extra', isMatch: false, drum };
+        // The note it was closest to is kept, to show the hit by it.
+        evaluation = {
+          timingError: evaluation.timingError,
+          tier: 'extra',
+          isMatch: false,
+          drum,
+          nearestNoteIndex: bestMatch.originalIndex,
+        };
       }
     }
 

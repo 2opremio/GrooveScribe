@@ -106,3 +106,26 @@ describe('Drum Coach pass timing offset', () => {
     expect(playingEngine(notes, NOW_MS).passTimingOffset()).toBeNull();
   });
 });
+
+describe('Drum Coach stray hits', () => {
+  // the last kick of one play and the first kick of the next, 200 ms apart
+  const kicks = [
+    { time: 1000, type: DrumType.KICK },
+    { time: 1200, type: DrumType.KICK },
+  ];
+
+  it('keep the closest note not yet hit, so an early hit goes to the next note once the last is hit', () => {
+    const engine = playingEngine(kicks, 1130);
+    engine.handleMidiHit(DrumType.KICK, engine.startTime + 1000); // the last note, on time
+    const stray = engine.handleMidiHit(DrumType.KICK, engine.startTime + 1120); // 80 ms early
+    expect(stray.tier).toBe('extra');
+    expect(stray.nearestNoteIndex).toBe(1);
+    expect(stray.timingError).toBeCloseTo(-80);
+  });
+
+  it('keep the closer note when neither was hit', () => {
+    const engine = playingEngine(kicks, 1130);
+    const stray = engine.handleMidiHit(DrumType.KICK, engine.startTime + 1070); // 70 ms late
+    expect(stray.nearestNoteIndex).toBe(0);
+  });
+});

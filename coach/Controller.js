@@ -245,12 +245,12 @@ export class Controller {
 
     // Simulate count-in as the last measure of the groove.
     // Back-date sessionStartTime so the clearing loop sees timeMs
-    // starting at (N-1)*measureDuration — the last measure.
+    // starting at the start of the pass's last measure.
     // The clearing thresholds will fire for measure 0 during count-in,
     // ensuring it's cleared before any rushing hits arrive.
-    const totalMeasures = this.renderer.totalMeasures;
     const measureDurationMs = this.renderer.measureDurationMs;
-    this.sessionStartTime = scheduledAt - (totalMeasures - 1) * measureDurationMs;
+    const lastMeasureStartMs = this.renderer.passDurationMs - measureDurationMs;
+    this.sessionStartTime = scheduledAt - lastMeasureStartMs;
 
     // The count-in is for listening: nothing is graded until the first pass starts
     // (in _onRepeat), so a hit during it can't count against the player.
@@ -260,8 +260,7 @@ export class Controller {
     // Start clearing loop with rendering disabled (no playline or
     // circles visible during count-in).
     this.renderer._renderingEnabled = false;
-    const countInStartTimeMs = (totalMeasures - 1) * measureDurationMs;
-    this.renderer.scheduleMeasureClearing(countInStartTimeMs);
+    this.renderer.scheduleMeasureClearing(lastMeasureStartMs);
 
     this.renderer.startPlayLine(
       () => performance.now() - this.sessionStartTime - this._latencyMs()
@@ -312,14 +311,14 @@ export class Controller {
     this.renderer.scheduleMeasureClearing(0);
     this._refreshScorePanel();
 
+    // The pass has started, so its marks may be drawn, whether or not an animation frame
+    // has turned rendering on at the loop point yet (idempotent on later passes).
+    this.renderer.enableRendering();
+
     // grade the hits that arrived for this pass before it started
     const waiting = this.nextPassHits;
     this.nextPassHits = [];
     for (const hit of waiting) this.handleMidiHit(hit.drum, hit.timestamp, hit.velocity);
-
-    // Rendering was enabled at M0 barline during count-in.
-    // Re-enable here for subsequent repeats (idempotent).
-    this.renderer.enableRendering();
 
     // Playline was already started during count-in.
     // The closure captures `this` so it reads the updated sessionStartTime.
@@ -419,6 +418,7 @@ export class Controller {
 
   /** Mark notes as missed as soon as their time to be hit has passed. */
   _startWatchingMisses() {
+    this._stopWatchingMisses(); // a restart mid-pass must not leave a second watcher running
     const watch = () => {
       if (this.engine.isPlaying) {
         const missed = this.engine.takeMissedNotes(performance.now());
@@ -579,6 +579,8 @@ export class Controller {
    */
   stopSession() {
     this.isCoachingActive = false;
+    this.countInPlaying = false;
+    this.nextPassHits = [];
     this._stopWatchingMisses();
     this.engine.stop();
     this.renderer.clearAll();
@@ -723,10 +725,25 @@ export class Controller {
         abcIndex >= 0 ? abcIndex : null
       );
     } else {
-      // Extra hits (gray circles) - interpolated position based on hit drum
-      this.renderer.drawExtraHit(hitTimeMs, drum);
+      this.renderer.drawExtraHit(hitTimeMs, drum, this._nearestNoteOf(evaluation, drum));
     }
     this._refreshScorePanel();
+  }
+
+  /**
+   * The note a stray hit was closest to, for drawing it, or null if no note was in reach.
+   */
+  _nearestNoteOf(evaluation, drum) {
+    if (evaluation.nearestNoteIndex === undefined) return null;
+    const note = this.engine.noteTimeline.find(
+      (n) => n.originalIndex === evaluation.nearestNoteIndex
+    );
+    const abcIndex = this.abcMapper.getIndex(note.tickIndex, drum);
+    return {
+      timeMs: note.time,
+      timingError: evaluation.timingError,
+      abcNoteIndex: abcIndex >= 0 ? abcIndex : null,
+    };
   }
 
   /**
@@ -966,7 +983,7 @@ export class Controller {
    * the next pass's notes better than the current pass's waits for it (in _onRepeat).
    */
   _fitsNextPass(drum, timestamp) {
-    const passMs = this.renderer.totalMeasures * this.renderer.measureDurationMs;
+    const passMs = this.renderer.passDurationMs;
     const relativeHitTime = timestamp - this.sessionStartTime;
     const toNextPass = this.engine.nearestNoteDistance(drum, relativeHitTime - passMs, true);
     if (toNextPass > NORMAL_HIT_MATCH_WINDOW_MS) return false;

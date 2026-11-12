@@ -3,16 +3,16 @@
  *
  * Clears old feedback circles before the playline crosses each barline.
  * Uses precomputed geometric thresholds from PlaylineInterpolator to
- * determine when to clear. Clearing is spatial: all markers whose x
- * falls within the measure's X boundaries are removed from the DOM.
+ * determine when to clear. Each marker carries its measure and the play of that measure
+ * it belongs to; clearing a measure removes its markers from earlier plays.
  *
  * ## Usage
  *
  *   const clearer = new MeasureClearer();
- *   clearer.init(systems, svgLayers, interpolator, measureDurationMs);
+ *   clearer.init(svgLayers, thresholds, measureDurationMs);
  *   clearer.schedule(startTimeMs);
  *   // In rAF loop:
- *   clearer.tick(timeMs, getMeasureIndex);
+ *   clearer.tick(timeMs, getMeasureIndex, nextFirstPlayOf);
  */
 
 // How far ahead (ms) of a measure boundary to clear the next measure.
@@ -23,28 +23,27 @@ const MAX_CLEAR_AHEAD_MS = 400; // ceiling: never earlier than 400ms
 
 export class MeasureClearer {
   constructor() {
-    this._systems = [];
     this._svgLayers = [];
     this._thresholds = [];
     this._thresholdCursor = 0;
     this._clearAheadMs = 0;
     this._measureDurationMs = 0;
+    this._keptFrom = new Map(); // measure → earliest play it keeps markers of
   }
 
   /**
    * Bind to renderer state. Called once per groove load.
-   * @param {Array} systems - Per-system rendering data (with measureBoundaries, layerIndex, etc.)
    * @param {Array} svgLayers - SVG layer elements [{svg, layer}, ...]
    * @param {Array} thresholds - Precomputed barline-crossing thresholds from PlaylineInterpolator
    * @param {number} measureDurationMs - Duration of one measure in ms
    */
-  init(systems, svgLayers, thresholds, measureDurationMs) {
-    this._systems = systems;
+  init(svgLayers, thresholds, measureDurationMs) {
     this._svgLayers = svgLayers;
     this._thresholds = thresholds;
     this._measureDurationMs = measureDurationMs;
     this._thresholdCursor = 0;
     this._clearAheadMs = 0;
+    this._keptFrom = new Map(); // measure → earliest play it keeps markers of
   }
 
   /**
@@ -76,8 +75,10 @@ export class MeasureClearer {
    *
    * @param {number} timeMs - Current playback time
    * @param {function} getMeasureIndex - Callback to get current measure index for self-loop detection
+   * @param {function} nextFirstPlayOf - (measureIndex) => the play of that measure about to start;
+   *   marks from earlier plays are cleared, marks already drawn for it stay
    */
-  tick(timeMs, getMeasureIndex) {
+  tick(timeMs, getMeasureIndex, nextFirstPlayOf) {
     while (this._thresholdCursor < this._thresholds.length) {
       const t = this._thresholds[this._thresholdCursor];
       // When the destination measure is the same as the current measure
@@ -86,7 +87,7 @@ export class MeasureClearer {
       const currentMeasure = getMeasureIndex(timeMs);
       const ahead = t.measureIndex === currentMeasure ? 0 : this._clearAheadMs;
       if (timeMs >= t.timeMs - ahead) {
-        this._clearRegion(t.measureIndex);
+        this.clearMeasure(t.measureIndex, nextFirstPlayOf(t.measureIndex));
         this._thresholdCursor++;
       } else {
         break; // remaining thresholds are in the future
@@ -95,28 +96,27 @@ export class MeasureClearer {
   }
 
   /**
-   * Remove all feedback markers whose x falls within the X boundaries
-   * of the given measure. Finds the measure in the correct system and
-   * layer automatically.
+   * Remove the feedback markers of a measure that belong to plays before a given one. Each
+   * marker carries its measure and play, so where it was drawn (a shifted mark can cross a
+   * barline) doesn't matter.
+   * @param {number} measureIndex
+   * @param {number} keepFromPlay - markers of this play and later ones stay
    */
-  _clearRegion(measureIndex) {
-    for (const sys of this._systems) {
-      const bounds = sys.measureBoundaries;
-      const localIdx = measureIndex - (sys.measureOffset || 0);
-      if (localIdx < 0 || localIdx >= sys.numMeasures) continue;
-
-      const leftX = bounds[localIdx].x;
-      const rightX = localIdx + 1 < bounds.length ? bounds[localIdx + 1].x : Infinity; // last measure extends to right edge
-
-      const layer = this._svgLayers[sys.layerIndex]?.layer;
-      if (!layer) continue;
-
-      layer.querySelectorAll('.coach-hit-marker').forEach((el) => {
-        const x = parseFloat(el.getAttribute('data-x'));
-        if (x >= leftX && x < rightX) {
-          el.remove();
-        }
+  clearMeasure(measureIndex, keepFromPlay) {
+    this._keptFrom.set(measureIndex, Math.max(this.keptFrom(measureIndex), keepFromPlay));
+    for (const { layer } of this._svgLayers) {
+      layer.querySelectorAll(`.coach-hit-marker[data-measure="${measureIndex}"]`).forEach((el) => {
+        if (Number(el.getAttribute('data-play')) < keepFromPlay) el.remove();
       });
     }
+  }
+
+  /**
+   * @param {number} measureIndex
+   * @returns {number} the earliest play whose markers a measure still keeps; markers of
+   *   earlier plays have been cleared from it
+   */
+  keptFrom(measureIndex) {
+    return this._keptFrom.get(measureIndex) ?? -Infinity;
   }
 }
