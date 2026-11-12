@@ -10,17 +10,16 @@
  * - **Segments**: Each system becomes a segment in the strip, with a
  *   cumulative offset from the strip's left edge.
  *
- * - **Waypoints**: Notes, rests, and interior barlines mapped to
- *   absolute offsets. Time-sorted for linear/cursor interpolation.
+ * - **Waypoints**: Notes, rests, and barlines mapped to absolute offsets,
+ *   sorted by time. A barline is placed at the exact time its measure
+ *   ends, so the playline reaches it as the measure ends and never runs
+ *   into the next measure early. The groove's final barline, at its end
+ *   time, sits at the strip's right edge, which is the left edge again:
+ *   the playline wraps exactly at the loop point.
  *
- * - **Sentinel**: A waypoint at grooveEndMs with absOffset equal to
- *   the first note's offset. Creates a conceptual wrap-around so
- *   interpolation past the last note proceeds forward and wraps
- *   smoothly via modulo.
- *
- * - **Thresholds**: Inverse-interpolated times at which the playline
- *   crosses each barline position. Used for measure clearing and
- *   getMeasureIndex.
+ * - **Thresholds**: The time each measure starts, with measure 0 at the
+ *   loop point (the groove's end), where the next pass begins. Used for
+ *   measure clearing and getMeasureIndex.
  *
  * ## Usage
  *
@@ -43,75 +42,37 @@ export class PlaylineInterpolator {
     return this._thresholds;
   }
 
-  /** @returns {Object} Waypoint data for direct access */
-  get waypointData() {
-    return {
-      segments: this._segments,
-      waypoints: this._waypoints,
-      totalWidth: this._totalWidth,
-    };
-  }
-
   /**
-   * Build segments, waypoints, sentinel, and thresholds from system data.
+   * Build segments, waypoints, and thresholds from system data.
    * Call once per groove load.
    * @param {Array} systems - Per-system data with timeline and measureBoundaries
    */
   build(systems) {
-    // --- Segments ---
-    const segments = [];
-    let cumulativeOffset = 0;
-    for (const sys of systems) {
-      const boundaries = sys.measureBoundaries
-        .filter((b) => b.x !== null)
-        .sort((a, b) => a.x - b.x);
-      const leftEdge = boundaries.length > 0 ? boundaries[0].x : 0;
-      const rightEdge = boundaries.length > 0 ? boundaries.at(-1).x : 0;
-      const width = rightEdge - leftEdge;
-      segments.push({ sys, leftEdge, rightEdge, width, offset: cumulativeOffset });
-      cumulativeOffset += width;
-    }
-    const totalWidth = cumulativeOffset;
+    const segments = buildSegments(systems);
 
-    // --- Flat waypoints ---
-    const waypoints = [];
+    // --- Waypoints: barlines at the time their measure ends, then the notes ---
+    const barlines = [];
+    const notes = [];
     for (const seg of segments) {
+      for (const b of seg.sys.measureBoundaries) {
+        if (b.x !== null) {
+          barlines.push({ timeMs: b.timeMs, absOffset: seg.offset + (b.x - seg.leftEdge) });
+        }
+      }
       for (const t of seg.sys.timeline) {
         if (t.x !== undefined) {
-          waypoints.push({
-            timeMs: t.timeMs,
-            absOffset: seg.offset + (t.x - seg.leftEdge),
-          });
+          notes.push({ timeMs: t.timeMs, absOffset: seg.offset + (t.x - seg.leftEdge) });
         }
       }
     }
-    waypoints.sort((a, b) => a.timeMs - b.timeMs);
-
-    // --- Sentinel for loop wraparound ---
-    const grooveEndMs =
-      waypoints.length > 0
-        ? Math.max(...systems.flatMap((s) => s.measureBoundaries.map((b) => b.timeMs)))
-        : 0;
-    const firstNoteOffset = waypoints.length > 0 ? waypoints[0].absOffset : 0;
-    const noteWaypointCount = waypoints.length;
-    if (waypoints.length > 0) {
-      waypoints.push({ timeMs: grooveEndMs, absOffset: firstNoteOffset });
-    }
-
-    // --- Thresholds ---
-    const { thresholds, augmentedWaypoints } = this._computeThresholds(
-      segments,
-      waypoints,
-      noteWaypointCount,
-      totalWidth,
-      grooveEndMs,
-      firstNoteOffset
-    );
+    // A barline comes before the note on the downbeat it precedes: the playline reaches
+    // the barline as the measure ends, then steps onto that note.
+    const waypoints = [...barlines, ...notes].sort((a, b) => a.timeMs - b.timeMs);
 
     this._segments = segments;
-    this._waypoints = augmentedWaypoints;
-    this._totalWidth = totalWidth;
-    this._thresholds = thresholds;
+    this._waypoints = waypoints;
+    this._totalWidth = segments.reduce((sum, seg) => sum + seg.width, 0);
+    this._thresholds = this._computeThresholds(systems);
     this.cursor = 0;
   }
 
@@ -122,11 +83,8 @@ export class PlaylineInterpolator {
    */
   interpolate(timeMs) {
     const waypoints = this._waypoints;
-    const totalWidth = this._totalWidth;
-    if (waypoints.length === 0 || totalWidth === 0) return null;
-
-    let left = null,
-      right = null;
+    let left = null;
+    let right = null;
     for (const w of waypoints) {
       if (w.timeMs <= timeMs) left = w;
       else {
@@ -134,16 +92,7 @@ export class PlaylineInterpolator {
         break;
       }
     }
-    if (!left || !right) return null;
-
-    let rightOffset = right.absOffset;
-    if (rightOffset < left.absOffset) rightOffset += totalWidth;
-
-    const ratio = (timeMs - left.timeMs) / (right.timeMs - left.timeMs);
-    const interpOffset = left.absOffset + ratio * (rightOffset - left.absOffset);
-    const modOffset = ((interpOffset % totalWidth) + totalWidth) % totalWidth;
-
-    return this._offsetToSystem(modOffset);
+    return this._between(left, right, timeMs);
   }
 
   /**
@@ -153,27 +102,21 @@ export class PlaylineInterpolator {
    */
   interpolateWithCursor(timeMs) {
     const waypoints = this._waypoints;
-    const totalWidth = this._totalWidth;
-    if (waypoints.length === 0 || totalWidth === 0) return null;
-
-    // Advance cursor to the last waypoint at or before timeMs
     while (this.cursor < waypoints.length - 1 && waypoints[this.cursor + 1].timeMs <= timeMs) {
       this.cursor++;
     }
+    return this._between(waypoints[this.cursor], waypoints[this.cursor + 1], timeMs);
+  }
 
-    const left = waypoints[this.cursor];
-    const right = waypoints[this.cursor + 1];
-
-    if (!left || !right || right.timeMs <= left.timeMs) return null;
-
-    let rightOffset = right.absOffset;
-    if (rightOffset < left.absOffset) rightOffset += totalWidth;
-
+  /**
+   * The point between two waypoints at a time; null when the time is outside the strip.
+   * The groove's final barline is at the strip's right edge, which is its left edge.
+   */
+  _between(left, right, timeMs) {
+    if (!left || !right || right.timeMs <= left.timeMs || this._totalWidth === 0) return null;
     const ratio = (timeMs - left.timeMs) / (right.timeMs - left.timeMs);
-    const interpOffset = left.absOffset + ratio * (rightOffset - left.absOffset);
-    const modOffset = ((interpOffset % totalWidth) + totalWidth) % totalWidth;
-
-    return this._offsetToSystem(modOffset);
+    const offset = left.absOffset + ratio * (right.absOffset - left.absOffset);
+    return this._offsetToSystem(offset % this._totalWidth);
   }
 
   /**
@@ -213,81 +156,35 @@ export class PlaylineInterpolator {
   }
 
   /**
-   * Compute measure-crossing thresholds by inverse-interpolating barline
-   * positions through the waypoint strip.
+   * The time each measure starts. Measure 0 starts at the loop point, the groove's end,
+   * where the next pass begins.
    */
-  _computeThresholds(
-    segments,
-    waypoints,
-    noteWaypointCount,
-    totalWidth,
-    grooveEndMs,
-    firstNoteOffset
-  ) {
-    const thresholds = [];
-    const segmentBoundaryOffsets = new Set(
-      segments.map((s) => s.offset).concat(segments.map((s) => s.offset + s.width))
-    );
-    for (const seg of segments) {
-      for (const b of seg.sys.measureBoundaries) {
-        if (b.x === null) continue;
-        const barlineOffset = seg.offset + (b.x - seg.leftEdge);
-
-        if (barlineOffset <= 0) continue;
-        if (barlineOffset >= totalWidth) continue;
-
-        let left = null,
-          right = null;
-        for (let i = 0; i < noteWaypointCount; i++) {
-          const w = waypoints[i];
-          if (w.absOffset <= barlineOffset) left = w;
-          else if (!right) right = w;
-        }
-        if (!left || !right || left.absOffset === right.absOffset) continue;
-
-        const ratio = (barlineOffset - left.absOffset) / (right.absOffset - left.absOffset);
-        const thresholdTimeMs = left.timeMs + ratio * (right.timeMs - left.timeMs);
-
-        thresholds.push({
-          timeMs: thresholdTimeMs,
-          measureIndex: b.measureIndex,
-        });
-
-        if (!segmentBoundaryOffsets.has(barlineOffset)) {
-          waypoints.push({ timeMs: thresholdTimeMs, absOffset: barlineOffset });
-        }
-      }
+  _computeThresholds(systems) {
+    const boundaries = systems.flatMap((s) => s.measureBoundaries);
+    if (boundaries.length === 0) return [];
+    const grooveEndMs = Math.max(...boundaries.map((b) => b.timeMs));
+    const lastMeasure = Math.max(...boundaries.map((b) => b.measureIndex));
+    const starts = new Map([[0, grooveEndMs]]);
+    for (const b of boundaries) {
+      if (b.measureIndex > 0 && b.measureIndex < lastMeasure) starts.set(b.measureIndex, b.timeMs);
     }
-
-    // Measure 0 threshold (loop-point wraparound)
-    if (waypoints.length >= 2) {
-      let lastReal = null;
-      for (const w of waypoints) {
-        if (w.timeMs >= grooveEndMs) continue;
-        if (!lastReal || w.absOffset > lastReal.absOffset) lastReal = w;
-      }
-      if (lastReal && lastReal.absOffset < totalWidth) {
-        const unwrappedSentinelOffset = firstNoteOffset + totalWidth;
-        const ratio =
-          (totalWidth - lastReal.absOffset) / (unwrappedSentinelOffset - lastReal.absOffset);
-        const thresholdTimeMs = lastReal.timeMs + ratio * (grooveEndMs - lastReal.timeMs);
-        thresholds.push({
-          timeMs: thresholdTimeMs,
-          measureIndex: 0,
-        });
-      }
-    }
-
-    waypoints.sort((a, b) => a.timeMs - b.timeMs);
-    thresholds.sort((a, b) => a.timeMs - b.timeMs);
-
-    const seen = new Set();
-    const deduped = thresholds.filter((t) => {
-      if (seen.has(t.measureIndex)) return false;
-      seen.add(t.measureIndex);
-      return true;
-    });
-
-    return { thresholds: deduped, augmentedWaypoints: waypoints };
+    return [...starts]
+      .map(([measureIndex, timeMs]) => ({ measureIndex, timeMs }))
+      .sort((a, b) => a.timeMs - b.timeMs);
   }
+}
+
+/** Each system as a segment of the strip, placed after the systems before it. */
+function buildSegments(systems) {
+  const segments = [];
+  let offset = 0;
+  for (const sys of systems) {
+    const xs = sys.measureBoundaries.filter((b) => b.x !== null).map((b) => b.x);
+    const leftEdge = xs.length > 0 ? Math.min(...xs) : 0;
+    const rightEdge = xs.length > 0 ? Math.max(...xs) : 0;
+    const width = rightEdge - leftEdge;
+    segments.push({ sys, leftEdge, rightEdge, width, offset });
+    offset += width;
+  }
+  return segments;
 }
