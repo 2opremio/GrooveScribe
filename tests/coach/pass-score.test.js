@@ -5,6 +5,7 @@ import {
   goalChecks,
   isBetter,
   meetsGoal,
+  tierPercentages,
   verdict,
 } from '../../coach/engine/PassScore.js';
 
@@ -33,6 +34,18 @@ describe('Drum Coach pass goal', () => {
 
   it('is not met by a pass with nothing hit', () => {
     expect(meetsGoal(score({}), GOAL)).toBe(false);
+  });
+});
+
+describe('Drum Coach tier shares', () => {
+  it('are shares of every note played, missed ones included', () => {
+    const pct = tierPercentages(score({ perfect: 5, good: 2, close: 1, missed: 2, stray: 3 }));
+    expect(pct).toEqual({ perfect: 50, good: 20, close: 10 });
+  });
+
+  it('count missed notes against the blue target', () => {
+    expect(goalChecks(score({ perfect: 5, missed: 5 }), GOAL).perfect).toBe(true);
+    expect(goalChecks(score({ perfect: 4, missed: 6 }), GOAL).perfect).toBe(false);
   });
 });
 

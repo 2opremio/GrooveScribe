@@ -33,8 +33,8 @@ const DEFAULTS = {
   minHitVelocity: 0, // 0 = no hit is ignored for being soft
   autoBpm: false, // in practice mode, raise the tempo after passes that meet the goal
   autoBpmPasses: 1, // passes in a row that must meet the goal before the tempo rises
-  goalMinPerfectPercent: 50, // blue notes, in percent of the notes hit, at least
-  goalMaxClosePercent: 10, // yellow notes, in percent of the notes hit, at most
+  goalMinPerfectPercent: 50, // blue notes, in percent of the notes played, at least
+  goalMaxClosePercent: 10, // yellow notes, in percent of the notes played, at most
   fewMistakesPercent: 5, // missed notes and stray hits, in percent of the notes, that count as few
 };
 
