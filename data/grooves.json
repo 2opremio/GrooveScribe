@@ -6,6 +6,11 @@
         "name": "Kick-snare shifted paradiddles",
         "groove": "?TimeSig=4/4&Div=16&Tempo=80&Measures=8&H=|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|&S=|-g--O-gg-g--O-gg|-g--O-gg-g--O-gg|-gg-O--g-gg-O--g|-gg-O--g-gg-O--g|--g-Og-g--g-Og-g|--g-Og-g--g-Og-g|-g-gO-g--g-gO-g-|-g-gO-g--g-gO-g-|&K=|o-oo-o--o-oo-o--|o-oo-o--o-oo-o--|o--o-oo-o--o-oo-|o--o-oo-o--o-oo-|oo-o--o-oo-o--o-|oo-o--o-oo-o--o-|o-o--o-oo-o--o-o|o-o--o-oo-o--o-o|",
         "createdAt": 1775869209278
+      },
+      "groove_1794475465223": {
+        "name": "Paradiddle hi-hat/snare, kick variations",
+        "groove": "?TimeSig=4/4&Div=16&Tempo=80&Measures=8&H=|x-xx-x--x-xx-x--|x-xx-x--x-xx-x--|x-xx-x--x-xx-x--|x-xx-x--x-xx-x--|x-xx-x--x-xx-x--|x-xx-x--x-xx-x--|x-xx-x--x-xx-x--|x-xx-x--x-xx-x--|&S=|-g--O-gg-g--O-gg|-g--O-gg-g--O-gg|-g--O-gg-g--O-gg|-g--O-gg-g--O-gg|-g--O-gg-g--O-gg|-g--O-gg-g--O-gg|-g--O-gg-g--O-gg|-g--O-gg-g--O-gg|&K=|o-------o-------|o-------o-------|o-------o-o-----|o-------o-o-----|o--o----o--o----|o--o----o--o----|o-oo-o--o-oo-o--|o-oo-o--o-oo-o--|",
+        "createdAt": 1794475465223
       }
     }
   }
