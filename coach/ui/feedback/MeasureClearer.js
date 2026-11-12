@@ -12,7 +12,7 @@
  *   clearer.init(systems, svgLayers, interpolator, measureDurationMs);
  *   clearer.schedule(startTimeMs);
  *   // In rAF loop:
- *   clearer.tick(timeMs, getMeasureIndex);
+ *   clearer.tick(timeMs, getMeasureIndex, nextFirstPlayOf);
  */
 
 // How far ahead (ms) of a measure boundary to clear the next measure.
@@ -76,8 +76,10 @@ export class MeasureClearer {
    *
    * @param {number} timeMs - Current playback time
    * @param {function} getMeasureIndex - Callback to get current measure index for self-loop detection
+   * @param {function} nextFirstPlayOf - (measureIndex) => the play of that measure about to start;
+   *   marks from earlier plays are cleared, marks already drawn for it stay
    */
-  tick(timeMs, getMeasureIndex) {
+  tick(timeMs, getMeasureIndex, nextFirstPlayOf) {
     while (this._thresholdCursor < this._thresholds.length) {
       const t = this._thresholds[this._thresholdCursor];
       // When the destination measure is the same as the current measure
@@ -86,7 +88,7 @@ export class MeasureClearer {
       const currentMeasure = getMeasureIndex(timeMs);
       const ahead = t.measureIndex === currentMeasure ? 0 : this._clearAheadMs;
       if (timeMs >= t.timeMs - ahead) {
-        this.clearMeasure(t.measureIndex);
+        this.clearMeasure(t.measureIndex, nextFirstPlayOf(t.measureIndex));
         this._thresholdCursor++;
       } else {
         break; // remaining thresholds are in the future
@@ -95,11 +97,13 @@ export class MeasureClearer {
   }
 
   /**
-   * Remove all feedback markers whose x falls within the X boundaries
-   * of the given measure. Finds the measure in the correct system and
-   * layer automatically.
+   * Remove the feedback markers of a measure that belong to plays before a given one:
+   * markers whose x falls within the measure's X boundaries and whose play is earlier.
+   * Finds the measure in the correct system and layer automatically.
+   * @param {number} measureIndex
+   * @param {number} keepFromPlay - markers of this play and later ones stay
    */
-  clearMeasure(measureIndex) {
+  clearMeasure(measureIndex, keepFromPlay) {
     for (const sys of this._systems) {
       const bounds = sys.measureBoundaries;
       const localIdx = measureIndex - (sys.measureOffset || 0);
@@ -113,7 +117,8 @@ export class MeasureClearer {
 
       layer.querySelectorAll('.coach-hit-marker').forEach((el) => {
         const x = parseFloat(el.getAttribute('data-x'));
-        if (x >= leftX && x < rightX) {
+        const play = Number(el.getAttribute('data-play'));
+        if (x >= leftX && x < rightX && play < keepFromPlay) {
           el.remove();
         }
       });

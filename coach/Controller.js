@@ -743,10 +743,25 @@ export class Controller {
         abcIndex >= 0 ? abcIndex : null
       );
     } else {
-      // Extra hits (gray circles) - interpolated position based on hit drum
-      this.renderer.drawExtraHit(hitTimeMs, drum);
+      this.renderer.drawExtraHit(hitTimeMs, drum, this._nearestNoteOf(evaluation, drum));
     }
     this._refreshScorePanel();
+  }
+
+  /**
+   * The note a stray hit was closest to, for drawing it, or null if no note was in reach.
+   */
+  _nearestNoteOf(evaluation, drum) {
+    if (evaluation.nearestNoteIndex === undefined) return null;
+    const note = this.engine.noteTimeline.find(
+      (n) => n.originalIndex === evaluation.nearestNoteIndex
+    );
+    const abcIndex = this.abcMapper.getIndex(note.tickIndex, drum);
+    return {
+      timeMs: note.time,
+      timingError: evaluation.timingError,
+      abcNoteIndex: abcIndex >= 0 ? abcIndex : null,
+    };
   }
 
   /**

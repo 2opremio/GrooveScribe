@@ -10,7 +10,8 @@ const HIT_TIME_MATCH_TOLERANCE_MS = 15;
 
 // Per-tier visual offset clamp limits (px) — constrains how far a feedback
 // circle shifts horizontally from the target note to reflect timing error
-const TIER_CLAMP_LIMITS = { perfect: 3, good: 8, close: 12, extra: 50 };
+// a stray hit drawn by its note can be up to 150 ms off; keep it close enough to read as that note's
+const TIER_CLAMP_LIMITS = { perfect: 3, good: 8, close: 12, extra: 15 };
 
 // Horizontal offset per ms of timing error (px/ms).
 // Controls how visually pronounced early/late hits appear.
@@ -82,6 +83,10 @@ export class Renderer {
     this.sniffedData = null;
     this.measureDurationMs = 0;
     this.totalMeasures = 0; // measures of the notation
+    // Passes started since playback began; the count-in is pass 0. With the measure being
+    // played, it numbers each play of a measure, and every mark belongs to one play.
+    this._pass = -1;
+    this._clearPass = 0; // the pass whose barline crossings the clearer is following
     this.repeatsPerBar = 1; // times each measure plays before the next one
     this._playedMeasure = null; // measure of the pass the playline was last in, as played
     this.clearedMeasures = new Set();
@@ -138,6 +143,7 @@ export class Renderer {
    * Clear all feedback markers in all layers
    */
   clearFeedback() {
+    this._pass = -1;
     for (const { layer } of this.svgLayers) {
       layer.querySelectorAll('.coach-hit-marker').forEach((el) => el.remove());
     }
@@ -326,8 +332,7 @@ export class Renderer {
     xOffset = Math.max(-clampLimit, Math.min(clampLimit, xOffset));
     if (tier === 'perfect' && Math.abs(timingError) < PERFECT_SNAP_THRESHOLD_MS) xOffset = 0;
 
-    const measureIndex = this._getMeasureIndex(hitTimeMs);
-    this._drawCircle(note.x + xOffset, note.y, tier, targetLayerIndex, measureIndex);
+    this._drawCircle(note.x + xOffset, note.y, tier, targetLayerIndex, this._playAt(playedTimeMs));
   }
 
   /**
@@ -354,7 +359,7 @@ export class Renderer {
     cross.setAttribute('fill', 'none');
     cross.setAttribute('style', 'pointer-events: none;');
     cross.setAttribute('data-x', x);
-    cross.setAttribute('data-measure', this._getMeasureIndex(shownTimeMs));
+    cross.setAttribute('data-play', this._playAt(playedTimeMs));
     cross.classList.add('coach-hit-marker');
     layer.appendChild(cross);
   }
@@ -379,15 +384,30 @@ export class Renderer {
   }
 
   /**
-   * Draw feedback for an unmatched (extra) hit.
-   * Uses interpolated X from measure boundaries and the Y for the drum
-   * that was actually hit — never snaps to a target note position.
+   * Draw a stray hit: one outside every grading window, or with no note to grade it against.
+   * It goes where it landed in time, on the line of the drum that was hit.
+   *
+   * Except across a jump back (a repeat of the same measure, or the loop to the groove's
+   * start): a hit meant for the first notes after the jump lands, in time, at the end of the
+   * play before it, which the jump is about to clear. It's drawn by the note it was meant
+   * for instead, shifted by how early it was, and belongs to that note's play.
+   * @param {number} playedTimeMs - the hit's time in the pass
+   * @param {string} drumType - the drum that was hit
+   * @param {{timeMs: number, timingError: number, abcNoteIndex: number|null}|null} nearest -
+   *   the closest note on that drum not yet hit, within reach of the hit
    */
-  drawExtraHit(playedTimeMs, drumType) {
+  drawExtraHit(playedTimeMs, drumType, nearest) {
     if (!this._renderingEnabled || this.systems.length === 0) return;
-    const hitTimeMs = this._shownTimeMs(playedTimeMs);
+    const hitPlay = this._playAt(playedTimeMs);
+    if (nearest) {
+      const notePlay = this._playAt(nearest.timeMs);
+      if (notePlay > hitPlay && this._measureOfPlay(notePlay) <= this._measureOfPlay(hitPlay)) {
+        this._drawStrayByNote(nearest, drumType, notePlay);
+        return;
+      }
+    }
 
-    // Find the system and interpolated X for this hit time
+    const hitTimeMs = this._shownTimeMs(playedTimeMs);
     const interp = this._interpolator.interpolate(hitTimeMs);
     if (!interp) return;
 
@@ -396,9 +416,15 @@ export class Renderer {
       console.warn(`[FeedbackRenderer] Unknown drumType for Y lookup: ${drumType}`);
       return;
     }
+    this._drawCircle(interp.x, y, 'extra', interp.sys.layerIndex, hitPlay);
+  }
 
-    const measureIndex = this._getMeasureIndex(hitTimeMs);
-    this._drawCircle(interp.x, y, 'extra', interp.sys.layerIndex, measureIndex);
+  _drawStrayByNote(nearest, drumType, notePlay) {
+    const found = this._findNote(this._shownTimeMs(nearest.timeMs), drumType, nearest.abcNoteIndex);
+    if (!found) return;
+    const limit = TIER_CLAMP_LIMITS.extra;
+    const xOffset = Math.max(-limit, Math.min(limit, nearest.timingError * TIMING_ERROR_PX_PER_MS));
+    this._drawCircle(found.note.x + xOffset, found.note.y, 'extra', found.layerIndex, notePlay);
   }
 
   /**
@@ -420,10 +446,43 @@ export class Renderer {
    * @param {number} startTimeMs - current playback time at pass start, as played
    */
   scheduleMeasureClearing(startTimeMs = 0) {
+    this._pass++;
+    this._clearPass = this._pass;
     this.clearedMeasures.clear();
     this._interpolator.cursor = 0;
     this._playedMeasure = null;
     this._clearer.schedule(this._shownTimeMs(startTimeMs));
+    // the pass starts on measure 0: earlier plays' marks on it go, whenever they were drawn
+    this._clearer.clearMeasure(0, this._playAt(0));
+  }
+
+  /** @returns {number} plays of a measure in one pass, repeats included */
+  get _playsPerPass() {
+    return this.totalMeasures * this.repeatsPerBar;
+  }
+
+  /**
+   * The play of a measure that a time of the current pass falls in, numbered across passes.
+   * A time before the pass started falls in the previous pass's last play.
+   * @param {number} playedTimeMs - time since the pass started
+   */
+  _playAt(playedTimeMs) {
+    return this._pass * this._playsPerPass + Math.floor(playedTimeMs / this.measureDurationMs);
+  }
+
+  /** @returns {number} the measure of the notation a play shows */
+  _measureOfPlay(play) {
+    const plays = this._playsPerPass;
+    return Math.floor((((play % plays) + plays) % plays) / this.repeatsPerBar);
+  }
+
+  /**
+   * The first play of a measure the clearer is about to reach. Its barline crossings belong
+   * to the pass they were scheduled in; measure 0's comes at that pass's end.
+   */
+  _nextFirstPlayOf(measureIndex) {
+    if (measureIndex === 0) return (this._clearPass + 1) * this._playsPerPass;
+    return this._clearPass * this._playsPerPass + measureIndex * this.repeatsPerBar;
   }
 
   /** @returns {number} how long one pass plays, every repeat of every measure, in ms */
@@ -442,9 +501,10 @@ export class Renderer {
   }
 
   /**
-   * When the playline moves on to another play of the same measure, it jumps back to the
-   * start of that measure: restart the interpolation there, and clear the previous play's
-   * circles from the measure.
+   * When the playline moves on to another play of a measure, that measure's marks from
+   * earlier plays go. Marks already drawn for the new play stay, however early they came.
+   * On a repeat of the same measure the playline also jumps back to its start: restart the
+   * interpolation there.
    * @param {number} playedTimeMs - time since the pass started
    * @param {number} shownTimeMs - the same time in the notation
    */
@@ -452,11 +512,12 @@ export class Renderer {
     const playedMeasure = Math.floor(playedTimeMs / this.measureDurationMs);
     const previous = this._playedMeasure;
     this._playedMeasure = playedMeasure;
-    if (previous === null || playedMeasure !== previous + 1) return;
+    if (previous === null || playedMeasure === previous) return;
+    const measure = Math.floor(playedMeasure / this.repeatsPerBar);
+    this._clearer.clearMeasure(measure, this._playAt(playedMeasure * this.measureDurationMs));
     if (playedMeasure % this.repeatsPerBar === 0) return; // a new measure, not a repeat
 
     this._interpolator.cursor = 0;
-    this._clearer.clearMeasure(Math.floor(playedMeasure / this.repeatsPerBar));
     this._clearer.schedule(shownTimeMs);
   }
 
@@ -473,7 +534,7 @@ export class Renderer {
 
   // --- Circle drawing ---
 
-  _drawCircle(x, y, tier, layerIndex = 0, measureIndex = 0) {
+  _drawCircle(x, y, tier, layerIndex, play) {
     const layer = this.svgLayers[layerIndex]?.layer;
     if (!layer) return;
 
@@ -487,7 +548,7 @@ export class Renderer {
     circle.setAttribute('stroke-width', HIT_RING_STROKE_PX);
     circle.setAttribute('stroke-opacity', HIT_RING_OPACITY);
     circle.setAttribute('style', 'pointer-events: none;');
-    circle.setAttribute('data-measure', measureIndex);
+    circle.setAttribute('data-play', play);
     circle.classList.add('coach-hit-marker');
 
     layer.appendChild(circle);
@@ -797,7 +858,11 @@ export class Renderer {
     this._followRepeats(playedTimeMs, timeMs);
 
     // --- Threshold-based clearing ---
-    this._clearer.tick(timeMs, (t) => this._getMeasureIndex(t));
+    this._clearer.tick(
+      timeMs,
+      (t) => this._getMeasureIndex(t),
+      (m) => this._nextFirstPlayOf(m)
+    );
 
     // Enable rendering (playline + circles) at the actual M0 barline
     // time — NOT at the CLEAR_AHEAD early trigger which is only for
