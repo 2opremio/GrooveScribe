@@ -33,3 +33,27 @@ describe('Drum Coach engine note matching', () => {
     }
   );
 });
+
+describe('Drum Coach engine scoring', () => {
+  const kicks = [
+    { time: 0, type: DrumType.KICK },
+    { time: 500, type: DrumType.KICK },
+  ];
+  const notesInTiers = (r) => r.perfect + r.good + r.close + r.miss;
+
+  it('treats a hit outside every window as an extra and leaves the note open', () => {
+    const engine = playingEngine(kicks, 91);
+    expect(engine.handleMidiHit(DrumType.KICK, engine.startTime + 90).tier).toBe('extra');
+    // a better-timed hit on the same note still counts
+    expect(engine.handleMidiHit(DrumType.KICK, engine.startTime + 10).tier).toBe('perfect');
+  });
+
+  it('puts every note in exactly one tier and counts stray hits as extras', () => {
+    const engine = playingEngine(kicks, 91);
+    engine.handleMidiHit(DrumType.KICK, engine.startTime + 90); // way off the first kick
+    const results = engine.getResults();
+    expect(notesInTiers(results)).toBe(results.totalNotes);
+    expect(results.miss).toBe(2);
+    expect(results.extra).toBe(1);
+  });
+});

@@ -247,8 +247,14 @@ export class Engine {
     } else {
       // Normal hit evaluation
       evaluation = evaluateHit(timestamp, this.startTime + bestMatch.time, latency, this.windows);
-      evaluation.noteIndex = bestMatch.originalIndex;
-      bestMatch.matched = true;
+      if (evaluation.isMatch) {
+        evaluation.noteIndex = bestMatch.originalIndex;
+        bestMatch.matched = true;
+      } else {
+        // Outside every grading window: a stray hit, and the note stays open for a
+        // better-timed one (or counts as missed), so each note lands in exactly one tier.
+        evaluation = { timingError: 0, tier: 'extra', isMatch: false, drum };
+      }
     }
 
     this.results.push(evaluation);
