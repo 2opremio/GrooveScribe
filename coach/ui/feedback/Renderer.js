@@ -23,10 +23,10 @@ const PERFECT_SNAP_THRESHOLD_MS = 8;
 // Tier colors for hit feedback circles
 const TIER_COLORS = { perfect: '#00BFFF', good: '#32CD32', close: '#FFD700', extra: '#888888' };
 
-// A missed note gets a red cross over it, larger than an x notehead so it can't read as one
+// A missed note gets a small red cross over it: the color tells it from an x notehead
 const MISS_COLOR = '#E53935';
-const MISS_CROSS_HALF_SIZE_PX = 5;
-const MISS_CROSS_STROKE_PX = 2.2;
+const MISS_CROSS_HALF_SIZE_PX = 3; // narrower than a hit circle, so the note stays readable
+const MISS_CROSS_STROKE_PX = 1.2;
 
 // Debug label layout: how far above clampTop to extend barlines for label clearance
 const DEBUG_LABEL_EXTEND_PX = 0;
