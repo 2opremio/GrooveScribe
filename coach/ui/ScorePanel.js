@@ -29,12 +29,18 @@ export class ScorePanel {
     this.container = panel;
   }
 
+  /** Show the panel, pinned just under the player bar while the page scrolls. */
   show() {
     this.container.style.display = 'block';
+    const playerBar = document.getElementById('midiPlayer');
+    if (!playerBar) throw new Error('[ScorePanel] #midiPlayer not found');
+    this.container.style.top = `${playerBar.getBoundingClientRect().bottom}px`;
+    contentArea().classList.add('coach-score-pinned');
   }
 
   hide() {
     this.container.style.display = 'none';
+    contentArea().classList.remove('coach-score-pinned');
   }
 
   /**
@@ -97,4 +103,11 @@ function goalHtml(goal) {
 
 function strayText(count) {
   return count === 1 ? '1 stray hit' : `${count} stray hits`;
+}
+
+/** The page area the panel and the sheet music sit in. */
+function contentArea() {
+  const area = document.getElementById('RightHandContent');
+  if (!area) throw new Error('[ScorePanel] #RightHandContent not found');
+  return area;
 }

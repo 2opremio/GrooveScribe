@@ -1025,7 +1025,15 @@
 }
 
 /* Score panel: under the coach bar, above the sheet music */
+/* stays under the player bar while the page scrolls (ScorePanel sets its top) */
+/* the page scrolls, not the content area: a scrolling ancestor would stop the panel sticking */
+#RightHandContent.coach-score-pinned {
+  overflow-y: visible;
+}
+
 #coachScorePanel {
+  position: sticky;
+  z-index: 5;
   background: #2b2b2b;
   color: #888;
   padding: 10px 18px;

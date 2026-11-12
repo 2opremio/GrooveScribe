@@ -28,6 +28,8 @@ const DEBUG_KEY_VELOCITY = 100;
 
 // BPM added by auto BPM each time enough passes meet the goal
 const AUTO_BPM_STEP = 5;
+// space left above the line being played when scrolling to it
+const LINE_SCROLL_MARGIN_PX = 8;
 
 /**
  * Controller - Orchestrates the entire Drum Coach feature
@@ -45,6 +47,7 @@ export class Controller {
     this.drumMapPresets = null; // Loaded in init()
     this.drumMapPresetsById = null;
     this.renderer = new FeedbackRenderer('#svgTarget');
+    this.renderer.onLineChange = (playLine) => this._scrollToLine(playLine);
     this.playerBar = new PlayerBar({
       grooveWriter,
       onStopSession: () => this.stopSession(),
@@ -428,6 +431,20 @@ export class Controller {
   _stopWatchingMisses() {
     cancelAnimationFrame(this._missWatchId);
     this._missWatchId = null;
+  }
+
+  /**
+   * Scroll the line being played to just under the score panel, so it and the line after
+   * it stay in view.
+   * @param {Element} playLine - the playline, on the line being played
+   */
+  _scrollToLine(playLine) {
+    const lineTop = playLine.getBoundingClientRect().top;
+    const visibleTop = this.scorePanel.container.getBoundingClientRect().bottom;
+    document.scrollingElement.scrollBy({
+      top: lineTop - visibleTop - LINE_SCROLL_MARGIN_PX,
+      behavior: 'smooth',
+    });
   }
 
   _refreshScorePanel() {
