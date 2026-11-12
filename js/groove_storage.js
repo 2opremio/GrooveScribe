@@ -12,31 +12,63 @@ let currentGrooveRef = null; // { category: "Saved", id: "groove_123" }
 
 // ── Server API ──────────────────────────────────────────────
 
+// Saving is refused until the saved grooves have loaded: a save sends the whole list,
+// so saving on top of a list that failed to load would replace every saved groove.
+var NOT_LOADED = 'your saved grooves have not loaded, so saving is off to avoid overwriting them';
+
+// The server's own error message from a failed request, or the status when it sent none.
+function serverError(xhr, what) {
+  var detail = 'HTTP ' + xhr.status;
+  try {
+    detail = JSON.parse(xhr.responseText).error || detail;
+  } catch (e) {
+    // not a JSON error body (e.g. a proxy's page); the status is all there is
+  }
+  return new Error(what + ': ' + detail);
+}
+
+// callback(err): cachedData is set only when the grooves loaded.
 export function fetchFromServer(callback) {
   var xhr = new XMLHttpRequest();
   xhr.open('GET', '/api/grooves', true);
   xhr.onload = function () {
-    if (xhr.status === 200) {
-      try {
-        cachedData = JSON.parse(xhr.responseText);
-      } catch (e) {
-        console.error('Failed to parse grooves JSON:', e);
-        cachedData = { version: 1, categories: {} };
-      }
-    } else {
-      console.error('GET /api/grooves failed:', xhr.status);
-      cachedData = { version: 1, categories: {} };
+    if (xhr.status !== 200) {
+      callback(serverError(xhr, 'Loading saved grooves failed'));
+      return;
     }
-    if (callback) callback(cachedData);
+    try {
+      cachedData = JSON.parse(xhr.responseText);
+    } catch (e) {
+      callback(new Error('Saved grooves are not valid JSON: ' + e.message));
+      return;
+    }
+    callback(null);
   };
   xhr.onerror = function () {
-    console.error('GET /api/grooves network error');
-    cachedData = { version: 1, categories: {} };
-    if (callback) callback(cachedData);
+    callback(new Error('Loading saved grooves failed: the server did not answer'));
   };
   xhr.send();
 }
 
+// callback(err, unpushed): how many saves the server has that GitHub doesn't yet.
+export function fetchBackupStatus(callback) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', '/api/grooves/backup', true);
+  xhr.onload = function () {
+    if (xhr.status !== 200) {
+      callback(serverError(xhr, 'Checking the groove backup failed'));
+      return;
+    }
+    callback(null, JSON.parse(xhr.responseText).unpushed);
+  };
+  xhr.onerror = function () {
+    callback(new Error('Checking the groove backup failed: the server did not answer'));
+  };
+  xhr.send();
+}
+
+// callback(err, backupWarning): err when the save didn't happen; backupWarning when it
+// was saved on the server but not backed up to GitHub (HTTP 502).
 function saveToServer(commitMessage, callback) {
   var payload = JSON.parse(JSON.stringify(cachedData));
   payload._commitMessage = commitMessage;
@@ -46,17 +78,15 @@ function saveToServer(commitMessage, callback) {
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.onload = function () {
     if (xhr.status === 200) {
-      if (callback) callback(null);
+      callback(null, null);
+    } else if (xhr.status === 502) {
+      callback(null, serverError(xhr, 'Backup failed').message);
     } else {
-      var msg = 'PUT /api/grooves failed: ' + xhr.status;
-      console.error(msg);
-      if (callback) callback(new Error(msg));
+      callback(serverError(xhr, 'Saving failed'));
     }
   };
   xhr.onerror = function () {
-    var msg = 'PUT /api/grooves network error';
-    console.error(msg);
-    if (callback) callback(new Error(msg));
+    callback(new Error('Saving failed: the server did not answer'));
   };
   xhr.send(JSON.stringify(payload));
 }
@@ -64,7 +94,10 @@ function saveToServer(commitMessage, callback) {
 // ── CRUD ────────────────────────────────────────────────────
 
 export function addGroove(category, name, grooveQueryString, callback) {
-  if (!cachedData) cachedData = { version: 1, categories: {} };
+  if (!cachedData) {
+    callback(new Error(NOT_LOADED));
+    return;
+  }
   if (!cachedData.categories[category]) cachedData.categories[category] = {};
 
   var id = 'groove_' + Date.now();
@@ -77,15 +110,14 @@ export function addGroove(category, name, grooveQueryString, callback) {
   currentGrooveRef = { category: category, id: id };
 
   var commitMsg = 'groove: save "' + name + '" in ' + category;
-  saveToServer(commitMsg, function (err) {
-    if (err) {
-      console.error('Failed to save groove to server:', err);
-    }
-    if (callback) callback(err);
-  });
+  saveToServer(commitMsg, callback);
 }
 
 export function updateGroove(grooveQueryString, callback) {
+  if (!cachedData) {
+    callback(new Error(NOT_LOADED));
+    return;
+  }
   if (!currentGrooveRef) {
     if (callback) callback(new Error('No groove loaded to update'));
     return;
@@ -101,15 +133,14 @@ export function updateGroove(grooveQueryString, callback) {
   cachedData.categories[cat][id].groove = grooveQueryString;
 
   var commitMsg = 'groove: update "' + name + '" in ' + cat;
-  saveToServer(commitMsg, function (err) {
-    if (err) {
-      console.error('Failed to update groove on server:', err);
-    }
-    if (callback) callback(err);
-  });
+  saveToServer(commitMsg, callback);
 }
 
 export function deleteGroove(category, grooveId, callback) {
+  if (!cachedData) {
+    callback(new Error(NOT_LOADED));
+    return;
+  }
   if (
     !cachedData ||
     !cachedData.categories[category] ||
@@ -137,12 +168,7 @@ export function deleteGroove(category, grooveId, callback) {
   }
 
   var commitMsg = 'groove: delete "' + name + '" from ' + category;
-  saveToServer(commitMsg, function (err) {
-    if (err) {
-      console.error('Failed to delete groove on server:', err);
-    }
-    if (callback) callback(err);
-  });
+  saveToServer(commitMsg, callback);
 }
 
 export function getCachedData() {

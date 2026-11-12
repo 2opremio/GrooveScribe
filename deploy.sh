@@ -22,8 +22,21 @@ echo ""
 HAS_GIT=$(ssh -A "$REMOTE" "test -d ~/$REMOTE_DIR/.git && echo yes || echo no")
 
 if [[ "$HAS_GIT" == "yes" ]]; then
-    echo "📦 Step 1: git pull on server..."
-    ssh -A "$REMOTE" "cd ~/$REMOTE_DIR && git stash -q 2>/dev/null || true; git pull --rebase"
+    echo "📦 Step 1: update the server's checkout..."
+    # The server commits every groove save and pushes it to GitHub. Deploy only when
+    # GitHub has exactly the server's grooves, then move to the branch tip; a reset
+    # also follows a force-pushed (rebased) branch, where a pull would replay old commits.
+    ssh -A "$REMOTE" "set -e; cd ~/$REMOTE_DIR
+        git fetch -q origin
+        if ! git diff --quiet HEAD -- data/grooves.json; then
+            echo '❌ The server has a groove save that is not committed:'; git diff --stat HEAD -- data/grooves.json; exit 1
+        fi
+        if ! git diff --quiet HEAD @{u} -- data/grooves.json; then
+            echo '❌ GitHub does not have the server'\''s grooves (a save was not pushed, or the branch changed them):'
+            git diff --stat HEAD @{u} -- data/grooves.json; exit 1
+        fi
+        git reset -q --hard @{u}
+        git log --oneline -1"
 
     # Overlay uncommitted local changes if any
     if ! git -C "$SCRIPT_DIR" diff --quiet HEAD 2>/dev/null || \

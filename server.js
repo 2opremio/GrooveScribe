@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const PORT = 3337;
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -30,29 +33,66 @@ const MIME_TYPES = {
   '.mid': 'audio/midi',
 };
 
-function gitCommitAndPush(message) {
-  const sshCmd = `ssh -i ${DEPLOY_KEY_PATH} -o StrictHostKeyChecking=accept-new`;
-  const env = Object.assign({}, process.env, { GIT_SSH_COMMAND: sshCmd });
+const gitEnv = Object.assign({}, process.env, {
+  GIT_SSH_COMMAND: `ssh -i ${DEPLOY_KEY_PATH} -o StrictHostKeyChecking=accept-new`,
+});
 
-  execFile('git', ['add', 'data/grooves.json'], { cwd: ROOT, env }, (addErr) => {
-    if (addErr) {
-      console.error('git add failed:', addErr.message);
-      return;
+function git(args) {
+  return execFileAsync('git', args, { cwd: ROOT, env: gitEnv });
+}
+
+// Commits the grooves file and pushes every commit GitHub doesn't have yet, so a
+// save that failed to push earlier goes out with the next one.
+async function commitAndPush(message) {
+  await git(['add', 'data/grooves.json']);
+  // exit code 1 means there are staged changes; a save that changed nothing commits nothing
+  const changed = await git(['diff', '--cached', '--quiet']).then(
+    () => false,
+    (err) => {
+      if (err.code === 1) return true;
+      throw err;
     }
-    execFile('git', ['commit', '-m', message], { cwd: ROOT, env }, (commitErr) => {
-      if (commitErr) {
-        console.error('git commit failed:', commitErr.message);
-        return;
-      }
-      execFile('git', ['push'], { cwd: ROOT, env }, (pushErr) => {
-        if (pushErr) {
-          console.error('git push failed:', pushErr.message);
-          return;
-        }
-        console.log('git push OK:', message);
-      });
-    });
-  });
+  );
+  if (changed) await git(['commit', '-m', message]);
+  await git(['push']);
+}
+
+// Saves this server has committed that GitHub doesn't have yet.
+async function unpushedSaves() {
+  const { stdout } = await git(['rev-list', '--count', '@{u}..HEAD']);
+  return Number(stdout.trim());
+}
+
+// Saves run one at a time: concurrent ones would race on the file and on git's index.
+let saveQueue = Promise.resolve();
+function serialized(task) {
+  const run = saveQueue.then(task);
+  // the next save waits for this one whether it failed or not; the caller gets the failure
+  saveQueue = run.then(
+    () => {},
+    () => {}
+  );
+  return run;
+}
+
+async function saveGrooves(pretty, commitMsg) {
+  try {
+    await fs.promises.writeFile(GROOVES_PATH, pretty, 'utf8');
+  } catch (err) {
+    return { status: 500, body: { error: 'Failed to write grooves: ' + err.message } };
+  }
+  try {
+    await commitAndPush(commitMsg);
+  } catch (err) {
+    console.error('Groove backup failed:', err.message);
+    // git's first error line is the reason; the full output is in the log above
+    const reason = (err.stderr || err.message).trim().split('\n')[0];
+    return {
+      status: 502,
+      body: { error: 'Saved on the server, but not backed up to GitHub: ' + reason },
+    };
+  }
+  return { status: 200, body: { ok: true } };
 }
 
 function readBody(req, callback) {
@@ -85,6 +125,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // API: GET /api/grooves/backup - how many saves GitHub doesn't have yet
+  if (req.method === 'GET' && req.url === '/api/grooves/backup') {
+    serialized(unpushedSaves).then(
+      (unpushed) => sendJSON(res, 200, { unpushed }),
+      (err) => sendJSON(res, 500, { error: 'Failed to check the backup: ' + err.message })
+    );
+    return;
+  }
+
   // API: PUT /api/grooves
   if (req.method === 'PUT' && req.url === '/api/grooves') {
     readBody(req, (err, body) => {
@@ -107,15 +156,9 @@ const server = http.createServer((req, res) => {
       const commitMsg = parsed._commitMessage || 'groove: update';
       delete parsed._commitMessage;
       const pretty = JSON.stringify(parsed, null, 2) + '\n';
-      fs.writeFile(GROOVES_PATH, pretty, 'utf8', (writeErr) => {
-        if (writeErr) {
-          sendJSON(res, 500, { error: 'Failed to write grooves: ' + writeErr.message });
-          return;
-        }
-        sendJSON(res, 200, { ok: true });
-        // Fire-and-forget git commit + push
-        gitCommitAndPush(commitMsg);
-      });
+      serialized(() => saveGrooves(pretty, commitMsg)).then((result) =>
+        sendJSON(res, result.status, result.body)
+      );
     });
     return;
   }
@@ -161,4 +204,12 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`GrooveScribe server listening on http://localhost:${PORT}`);
+  // retry saves a previous run committed but couldn't push
+  serialized(async () => {
+    const unpushed = await unpushedSaves();
+    if (unpushed === 0) return;
+    console.log(`Pushing ${unpushed} groove save(s) GitHub doesn't have yet`);
+    await git(['push']);
+    console.log('Groove backup caught up');
+  }).catch((err) => console.error('Groove backup still failing:', err.message));
 });

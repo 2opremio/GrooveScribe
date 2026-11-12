@@ -3929,10 +3929,20 @@ function GrooveWriter() {
     }
     banner.textContent = message;
     banner.style.display = 'block';
-    setTimeout(function () {
-      banner.style.display = 'none';
-    }, 8000);
   };
+
+  // A storage problem stays on screen until a save goes through and is backed up.
+  root.hideStorageError = function () {
+    var banner = document.getElementById('storageErrorBanner');
+    if (banner) banner.style.display = 'none';
+  };
+
+  // After a save that happened: warn while GitHub doesn't have it yet, else clear.
+  function reportBackup(backupWarning) {
+    if (backupWarning)
+      root.showStorageError(backupWarning + '. It will be retried with the next save.');
+    else root.hideStorageError();
+  }
 
   root.updateSaveDirtyState = function (currentQueryString) {
     var icon = document.getElementById('saveGrooveIcon');
@@ -3953,8 +3963,20 @@ function GrooveWriter() {
   };
 
   root.initGrooveStorage = function () {
-    grooveStorage.fetchFromServer(function () {
+    grooveStorage.fetchFromServer(function (err) {
+      if (err) {
+        root.showStorageError(err.message + '. Saving is off until they load; reload to retry.');
+        return;
+      }
       root.refreshGrooveList();
+      grooveStorage.fetchBackupStatus(function (statusErr, unpushed) {
+        if (statusErr) root.showStorageError(statusErr.message);
+        else if (unpushed > 0)
+          root.showStorageError(
+            unpushed +
+              ' saved groove change(s) are not backed up to GitHub yet. They will be retried with the next save.'
+          );
+      });
     });
   };
 
@@ -3967,11 +3989,12 @@ function GrooveWriter() {
   };
 
   root.deleteSavedGroove = function (category, grooveId) {
-    grooveStorage.deleteGroove(category, grooveId, function (err) {
+    grooveStorage.deleteGroove(category, grooveId, function (err, backupWarning) {
       if (err) {
         root.showStorageError('Failed to delete groove: ' + err.message);
         return;
       }
+      reportBackup(backupWarning);
       root.refreshGrooveList();
     });
   };
@@ -3984,11 +4007,12 @@ function GrooveWriter() {
     // If a saved groove is loaded, update it in place — no dialog needed
     var ref = grooveStorage.getCurrentGrooveRef();
     if (ref) {
-      grooveStorage.updateGroove(queryString, function (err) {
+      grooveStorage.updateGroove(queryString, function (err, backupWarning) {
         if (err) {
           root.showStorageError('Failed to update groove: ' + err.message);
           return;
         }
+        reportBackup(backupWarning);
         grooveStorage.setLastSaved(queryString);
         root.updateSaveDirtyState(queryString);
         root.refreshGrooveList();
@@ -4052,11 +4076,12 @@ function GrooveWriter() {
     var queryIndex = fullURL.indexOf('?');
     var queryString = queryIndex !== -1 ? fullURL.substring(queryIndex) : fullURL;
 
-    grooveStorage.addGroove(category, name, queryString, function (err) {
+    grooveStorage.addGroove(category, name, queryString, function (err, backupWarning) {
       if (err) {
         root.showStorageError('Failed to save groove: ' + err.message);
         return;
       }
+      reportBackup(backupWarning);
       grooveStorage.setLastSaved(queryString);
       root.updateSaveDirtyState(queryString);
       root.refreshGrooveList();
