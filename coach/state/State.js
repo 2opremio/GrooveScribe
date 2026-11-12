@@ -36,7 +36,8 @@ const DEFAULTS = {
   autoBpmPasses: 1, // passes in a row that must meet the goal before the tempo rises
   goalMinPerfectPercent: 50, // blue notes, in percent of the notes played, at least
   goalMaxClosePercent: 10, // yellow notes, in percent of the notes played, at most
-  goalMaxMistakesPercent: 2, // missed notes and stray hits, in percent of the notes played, at most
+  goalMaxMissedPercent: 2, // missed notes, in percent of the notes played, at most
+  goalMaxStrayPercent: 2, // stray hits, in percent of the notes played, at most
   fewMistakesPercent: 5, // missed notes and stray hits, in percent of the notes, that count as few
 };
 
@@ -221,15 +222,27 @@ export class StateManager {
     );
   }
 
-  get goalMaxMistakesPercent() {
-    return this._data.goalMaxMistakesPercent;
+  get goalMaxMissedPercent() {
+    return this._data.goalMaxMissedPercent;
   }
 
-  set goalMaxMistakesPercent(value) {
-    this._data.goalMaxMistakesPercent = percentOrKeep(
+  set goalMaxMissedPercent(value) {
+    this._data.goalMaxMissedPercent = percentOrKeep(
       value,
-      this._data.goalMaxMistakesPercent,
-      'goalMaxMistakesPercent'
+      this._data.goalMaxMissedPercent,
+      'goalMaxMissedPercent'
+    );
+  }
+
+  get goalMaxStrayPercent() {
+    return this._data.goalMaxStrayPercent;
+  }
+
+  set goalMaxStrayPercent(value) {
+    this._data.goalMaxStrayPercent = percentOrKeep(
+      value,
+      this._data.goalMaxStrayPercent,
+      'goalMaxStrayPercent'
     );
   }
 
@@ -250,7 +263,8 @@ export class StateManager {
     return {
       minPerfectPercent: this.goalMinPerfectPercent,
       maxClosePercent: this.goalMaxClosePercent,
-      maxMistakesPercent: this.goalMaxMistakesPercent,
+      maxMissedPercent: this.goalMaxMissedPercent,
+      maxStrayPercent: this.goalMaxStrayPercent,
     };
   }
 

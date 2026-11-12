@@ -19,8 +19,8 @@
  * @typedef {Object} Goal
  * @property {number} minPerfectPercent  Blue notes, in percent of the notes played, at least.
  * @property {number} maxClosePercent  Yellow notes, in percent of the notes played, at most.
- * @property {number} maxMistakesPercent  Missed notes and stray hits, in percent of the notes
- *   played, at most.
+ * @property {number} maxMissedPercent  Missed notes, in percent of the notes played, at most.
+ * @property {number} maxStrayPercent  Stray hits, in percent of the notes played, at most.
  */
 
 const PERCENT = 100;
@@ -50,7 +50,7 @@ export function addScores(a, b) {
  * ended up missed is already that note's miss, and isn't in the stray count.
  * @param {Score} score
  */
-export function mistakeCount(score) {
+function mistakeCount(score) {
   return score.missed + score.stray;
 }
 
@@ -82,14 +82,15 @@ export function tierPercentages(score) {
  * Each condition of the goal, for a score so far or a finished pass.
  * @param {Score} score
  * @param {Goal} goal
- * @returns {{perfect: boolean, close: boolean, mistakes: boolean}}
+ * @returns {{perfect: boolean, close: boolean, missed: boolean, stray: boolean}}
  */
 export function goalChecks(score, goal) {
   const notes = noteCount(score);
   return {
     perfect: notes > 0 && score.perfect * PERCENT >= goal.minPerfectPercent * notes,
     close: notes > 0 && score.close * PERCENT <= goal.maxClosePercent * notes,
-    mistakes: mistakeCount(score) * PERCENT <= goal.maxMistakesPercent * notes,
+    missed: score.missed * PERCENT <= goal.maxMissedPercent * notes,
+    stray: score.stray * PERCENT <= goal.maxStrayPercent * notes,
   };
 }
 
