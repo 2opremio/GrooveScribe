@@ -8,6 +8,7 @@ import { SettingsDialog } from './ui/SettingsDialog.js';
 import { ResultsDialog } from './ui/ResultsDialog.js';
 import { CalibrationDialog } from './ui/CalibrationDialog.js';
 import { coachState } from './state/State.js';
+import { toleranceWindows } from './engine/TimingEvaluator.js';
 import { DrumType } from './engine/DrumConstants.js';
 import { scoreLayoutExtractor } from './engine/ScoreLayoutExtractor.js';
 import { loadDrumMapPresets, getPresetMap, getPresetHihatCC } from './data/DrumMapLoader.js';
@@ -386,13 +387,19 @@ export class Controller {
     this._refreshScorePanel();
   }
 
+  /** The engine's note times and timing windows, both for the groove's current tempo. */
+  _loadEngineTimeline() {
+    this.timelineTempo = this.grooveWriter.myGrooveUtils.getTempo();
+    this.engine.windows = toleranceWindows(coachState.tolerance, this.timelineTempo);
+    this.engine.loadGroove({ target: this.getGrooveAsTimeline() });
+  }
+
   /**
    * Build the engine's note times for the groove as it is now (tempo included), and
    * the renderer's mapping of them onto the notation.
    */
   _loadTimeline() {
-    this.engine.loadGroove({ target: this.getGrooveAsTimeline() });
-    this.timelineTempo = this.grooveWriter.myGrooveUtils.getTempo();
+    this._loadEngineTimeline();
     this.bestKey = this._bestKey();
     this._refreshAbcMapping();
     this.setRendererGrooveContext();
@@ -499,10 +506,8 @@ export class Controller {
       // 0. Connect MIDI on first session (lazy initialization)
       await this._ensureMidiConnected();
 
-      // 1-2. Setup engine with tolerance windows based on settings, and the groove's notes
-      this.engine.windows = coachState.getToleranceWindows();
-      this.engine.loadGroove({ target: this.getGrooveAsTimeline() });
-      this.timelineTempo = this.grooveWriter.myGrooveUtils.getTempo();
+      // 1-2. Setup engine with the groove's notes and the level's windows at its tempo
+      this._loadEngineTimeline();
       this.bestKey = this._bestKey();
       this.lastPassScore = null;
       this.lastPassOffset = null;

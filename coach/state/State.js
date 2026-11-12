@@ -2,23 +2,17 @@
  * State - Manages the global state of the Drum Coach
  */
 
+import { TOLERANCE_LEVELS } from '../engine/TimingEvaluator.js';
+
 const VALID_MODES = ['practice', 'performance'];
-const VALID_TOLERANCES = ['strict', 'normal', 'relaxed'];
 // which hits near a calibration click count as the tap: only the loudest, or every hit
 const VALID_CALIBRATION_HIT_RULES = ['loudest', 'every'];
 const MAX_MIDI_VELOCITY = 127;
 const MAX_PERCENT = 100;
 
-// ms off a note that each tier allows; a hit further off than 'close' doesn't count
-export const TOLERANCE_WINDOWS = {
-  strict: { perfect: 15, good: 25, close: 40 },
-  normal: { perfect: 20, good: 35, close: 50 },
-  relaxed: { perfect: 30, good: 45, close: 65 },
-};
-
 const DEFAULTS = {
   mode: 'practice',
-  tolerance: 'normal',
+  tolerance: 'intermediate',
   reps: 4,
   countIn: true,
   calibrationOffset: 0,
@@ -72,7 +66,7 @@ export class StateManager {
   }
 
   set tolerance(value) {
-    if (!VALID_TOLERANCES.includes(value)) {
+    if (!Object.hasOwn(TOLERANCE_LEVELS, value)) {
       console.warn(`[State] Invalid tolerance '${value}', keeping '${this._data.tolerance}'`);
       return;
     }
@@ -311,11 +305,6 @@ export class StateManager {
 
   set drumMapConfigured(value) {
     this._data.drumMapConfigured = Boolean(value);
-  }
-
-  // Get tolerance windows for current setting
-  getToleranceWindows() {
-    return TOLERANCE_WINDOWS[this.tolerance];
   }
 
   // Convert to plain object: every setting, by name
