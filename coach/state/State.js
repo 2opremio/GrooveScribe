@@ -9,7 +9,8 @@ const VALID_CALIBRATION_HIT_RULES = ['loudest', 'every'];
 const MAX_MIDI_VELOCITY = 127;
 const MAX_PERCENT = 100;
 
-const TOLERANCE_WINDOWS = {
+// ms off a note that each tier allows; a hit further off than 'close' doesn't count
+export const TOLERANCE_WINDOWS = {
   strict: { perfect: 15, good: 25, close: 40 },
   normal: { perfect: 20, good: 35, close: 50 },
   relaxed: { perfect: 30, good: 45, close: 65 },
