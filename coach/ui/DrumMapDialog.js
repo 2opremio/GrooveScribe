@@ -55,6 +55,7 @@ export class DrumMapDialog {
 
     const dialog = document.createElement('div');
     dialog.id = 'coachDrumMapDialog';
+    dialog.className = 'coach-sheet';
     dialog.innerHTML = this._buildHTML();
     document.body.appendChild(dialog);
     this.container = dialog;
