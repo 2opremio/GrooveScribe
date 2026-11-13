@@ -149,3 +149,34 @@ describe('Drum Coach stray hits', () => {
     expect(stray.nearestNoteIndex).toBe(0);
   });
 });
+
+describe('Drum Coach wrong-drum hits', () => {
+  const snareNote = [{ time: 1000, type: DrumType.SNARE }];
+  const mistakes = (score) => score.missed + score.stray;
+
+  it('count a hit on the wrong drum, with its note missed, as one mistake', () => {
+    const engine = playingEngine(snareNote, 1000);
+    engine.handleMidiHit(DrumType.HH_CLOSED, engine.startTime + 1000); // hi-hat instead of snare
+    engine.finishPass();
+    const score = engine.passScore();
+    expect(score.missed).toBe(1);
+    expect(mistakes(score)).toBe(1);
+  });
+
+  it('count a wrong-drum hit as its own mistake when the right drum was hit too', () => {
+    const engine = playingEngine(snareNote, 1000);
+    engine.handleMidiHit(DrumType.HH_CLOSED, engine.startTime + 995);
+    engine.handleMidiHit(DrumType.SNARE, engine.startTime + 1000);
+    engine.finishPass();
+    const score = engine.passScore();
+    expect(score.perfect).toBe(1);
+    expect(mistakes(score)).toBe(1);
+  });
+
+  it('count a hit far from any note as a stray', () => {
+    const engine = playingEngine(snareNote, 1600);
+    engine.handleMidiHit(DrumType.HH_CLOSED, engine.startTime + 1600);
+    engine.finishPass();
+    expect(mistakes(engine.passScore())).toBe(2); // the stray, and the snare nobody played
+  });
+});
