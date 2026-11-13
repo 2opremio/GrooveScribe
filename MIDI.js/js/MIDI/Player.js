@@ -151,6 +151,27 @@ var startTime = 0; // to measure time elapse
 // the last: scheduling from the moment a timer fires instead would push the audio later by that
 // timer's lateness at every batch and every loop.
 var passStartContextTime = 0;
+// The next pass of a looping tune is queued as soon as the last batch of the pass before it is,
+// so the work done when a pass ends (the callbacks, a late timer) can't delay its first notes;
+// null until it is queued. A short tune that fits in one batch is then always a pass ahead.
+var nextPassStartContextTime = null;
+var nextPassFullyQueued = false;
+
+// Queues the pass after the one starting at fromContextTime.
+var queueNextPass = function (fromContextTime) {
+	nextPassStartContextTime = fromContextTime + (root.endTime - LEAD_IN_MS) / 1000;
+	nextPassFullyQueued = startAudio(0, true, nextPassStartContextTime);
+};
+
+// Drops everything still queued: the notes, their timers, and any pass queued ahead.
+var clearQueue = function () {
+	while (eventQueue.length) {
+		var o = eventQueue.pop();
+		window.clearTimeout(o.interval);
+		if (o.source && typeof (o.source) !== "number") o.source.disconnect(0);
+	}
+	nextPassStartContextTime = null;
+};
 
 // The audio time, in seconds, the song's first tick plays at in the pass being played, for
 // anything timed against the audio.
@@ -175,11 +196,20 @@ var scheduleTracking = function (channel, note, currentTime, delayMs, message, v
 		} else {
 			noteRegistrar[note] = data;
 		}
-		// the last event of a looping tune: the next pass starts one song length after this one,
-		// set before the callback so a repeat callback sees the pass it starts. The queue is
-		// empty once this event leaves it; it can already be empty, when a reload in an earlier
-		// callback let that event's timer take an entry from the reloaded tune's queue.
-		var loops = root.shouldLoop && currentTime == root.endTime && eventQueue.length <= 1;
+		// the last event of a pass: the next pass, already queued, becomes the one being played,
+		// set before the callback so a repeat callback sees the pass it starts
+		var atEnd = currentTime == root.endTime;
+		var switched = atEnd && nextPassStartContextTime !== null;
+		if (switched) {
+			passStartContextTime = nextPassStartContextTime;
+			nextPassStartContextTime = null;
+			if (nextPassFullyQueued) queueNextPass(passStartContextTime);
+		}
+		// looping was turned on too late to queue the next pass ahead: it starts one song length
+		// after this one. The queue is empty once this event leaves it; it can already be empty,
+		// when a reload in an earlier callback let that event's timer take an entry from the
+		// reloaded tune's queue.
+		var loops = !switched && root.shouldLoop && atEnd && eventQueue.length <= 1;
 		if (loops) {
 			passStartContextTime += (root.endTime - LEAD_IN_MS) / 1000;
 		}
@@ -191,7 +221,11 @@ var scheduleTracking = function (channel, note, currentTime, delayMs, message, v
 		// remove this event from the queue
 		eventQueue.shift();
 		
-		
+		// the callback turned looping off: the pass queued ahead isn't played
+		if (switched && !root.shouldLoop) {
+			clearQueue();
+			return;
+		}
 		// the callback may have turned looping off, or reloaded the tune and started it again
 		if(loops && root.shouldLoop && eventQueue.length == 0 ) {
 			// at the end of the current tune.   If we are repeating we need to requeue
@@ -226,8 +260,11 @@ var getLength = function() {
 	return totalTime;
 };
 
-var startAudio = function (currentTime, fromCache) {
-	if (!root.replayer) return;
+// Queues the next batch of a pass (100 notes at most), from song time currentTime on; a fresh
+// start (not fromCache) begins a pass now. passContextTime, when given, is the start of a pass
+// queued ahead. Returns whether the batch reaches the end of the song.
+var startAudio = function (currentTime, fromCache, passContextTime) {
+	if (!root.replayer) return false;
 	if (!fromCache) {
 		if (typeof (currentTime) === "undefined") currentTime = root.restart;
 		if (root.playing) stopAudio();
@@ -242,6 +279,7 @@ var startAudio = function (currentTime, fromCache) {
 	var ctx = getContext();
 	var length = data.length;
 	var passStartSet = fromCache;
+	var reachedEnd = true;
 	//
 	queuedTime = LEAD_IN_MS;
 	startTime = ctx.currentTime;
@@ -252,6 +290,7 @@ var startAudio = function (currentTime, fromCache) {
 		// if there are multiple notes at 0 delay
 		// queue them all together, regardless of queue size
 		if(data[n][1] != 0 && messages >= 100) {
+			reachedEnd = false;
 			break;
 		}
 		
@@ -267,7 +306,8 @@ var startAudio = function (currentTime, fromCache) {
 			passStartContextTime = ctx.currentTime - offset / 1000;
 			passStartSet = true;
 		}
-		var eventContextTime = passStartContextTime + queuedTime / 1000;
+		var passBase = passContextTime === undefined ? passStartContextTime : passContextTime;
+		var eventContextTime = passBase + queuedTime / 1000;
 		var delayMs = (eventContextTime - ctx.currentTime) * 1000;
 		var event = data[n][0].event;
 		if (event.type !== "channel") continue;
@@ -296,11 +336,17 @@ var startAudio = function (currentTime, fromCache) {
 				break;
 		}
 	}
+	// the batch with a looping pass's last note: queue the next pass now, ahead of time
+	if (reachedEnd && root.shouldLoop && nextPassStartContextTime === null && passContextTime === undefined) {
+		queueNextPass(passStartContextTime);
+	}
+	return reachedEnd;
 };
 
 var stopAudio = function () {
 	var ctx = getContext();
 	root.playing = false;
+	nextPassStartContextTime = null;
 	root.restart += (ctx.currentTime - startTime) * 1000;
 	// stop the audio, and intervals
 	while (eventQueue.length) {
