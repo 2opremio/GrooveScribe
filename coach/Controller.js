@@ -1,6 +1,6 @@
 import { Engine, NORMAL_HIT_MATCH_WINDOW_MS } from './engine/Engine.js';
 import { MidiInputHandler } from './engine/MidiInputHandler.js';
-import { LatencyManager } from './engine/LatencyManager.js';
+import { AudioClock } from './engine/AudioClock.js';
 import { ABCIndexMapper } from './engine/ABCIndexMapper.js';
 import { Renderer as FeedbackRenderer } from './ui/feedback/Renderer.js';
 import { PlayerBar } from './ui/PlayerBar.js';
@@ -36,11 +36,18 @@ const LINE_SCROLL_MARGIN_PX = 8;
 export class Controller {
   constructor(grooveWriter) {
     this.grooveWriter = grooveWriter;
-    this.latencyManager = new LatencyManager();
+    this.audioClock = null; // created with the session: the player's AudioContext exists by then
     this.engine = new Engine({ latencyMs: () => this._latencyMs() });
     this.abcMapper = new ABCIndexMapper();
     this.midiHandler = new MidiInputHandler({
       onHit: (drum, timestamp, velocity) => this.handleMidiHit(drum, timestamp, velocity),
+      onUntimedInput: (name) => {
+        console.error(`[Controller] MIDI input "${name}" sends notes without timestamps`);
+        this._showError(
+          `The MIDI input "${name}" sends notes without a time, so the coach can't grade ` +
+            'them. Connect the kit directly, or use a MIDI interface that timestamps notes.'
+        );
+      },
       drumMap: {}, // Populated from presets in init()
     });
     this.drumMapPresets = null; // Loaded in init()
@@ -55,10 +62,7 @@ export class Controller {
     this.dialog = new SettingsDialog();
     this.resultsDialog = new ResultsDialog();
     this.scorePanel = new ScorePanel();
-    this.calibrationDialog = new CalibrationDialog({
-      midiHandler: this.midiHandler,
-      latencyManager: this.latencyManager,
-    });
+    this.calibrationDialog = new CalibrationDialog({ midiHandler: this.midiHandler });
     this.drumMapDialog = null; // Created in init() after presets load
     this.state = coachState;
 
@@ -193,14 +197,15 @@ export class Controller {
     const originalRepeatCallback = utils.repeatCallback;
     const originalNotePlaying = utils.midiEventCallbacks.notePlaying;
 
-    // Both hooks run right after MIDI.js has scheduled the audio from "now", so the time is
-    // read first: anything done before reading it would make the coach's clock start late.
+    // Both hooks run in the same task as MIDI.js scheduling the pass from the audio clock's
+    // "now", which doesn't advance within a task: reading it here gives exactly the audio time
+    // the pass was scheduled from, whether MIDI.js schedules it before or after the hook.
 
     // Intercept play event
     utils.midiEventCallbacks.playEvent = (root) => {
-      const scheduledAt = performance.now();
+      const passContextTime = MIDI.Player.ctx.currentTime;
       if (originalPlayEvent) originalPlayEvent(root);
-      if (this.isCoachingActive) this._onPlaybackStart(scheduledAt);
+      if (this.isCoachingActive) this._onPlaybackStart(passContextTime);
     };
 
     // Intercept stop event
@@ -220,17 +225,17 @@ export class Controller {
 
     // Intercept repeat callback for multi-repetition sessions
     utils.repeatCallback = () => {
-      const scheduledAt = performance.now();
+      const passContextTime = MIDI.Player.ctx.currentTime;
       if (originalRepeatCallback) originalRepeatCallback();
-      if (this.isCoachingActive) this._onRepeat(scheduledAt);
+      if (this.isCoachingActive) this._onRepeat(passContextTime);
     };
   }
 
   /**
    * Called when MIDI playback starts - synchronizes timing and prepares renderer
-   * @param {number} scheduledAt - performance.now() when the audio was scheduled to start
+   * @param {number} passContextTime - the audio time the count-in was scheduled from, in s
    */
-  _onPlaybackStart(scheduledAt) {
+  _onPlaybackStart(passContextTime) {
     this._refreshAbcMapping(); // Map instruments to staff indices
 
     // Ensure sniffer is hooked to the engine and has processed the current ABC
@@ -253,22 +258,35 @@ export class Controller {
     // ensuring it's cleared before any rushing hits arrive.
     const measureDurationMs = this.renderer.measureDurationMs;
     const lastMeasureStartMs = this.renderer.passDurationMs - measureDurationMs;
-    this.sessionStartTime = scheduledAt - lastMeasureStartMs;
 
     // The count-in is for listening: nothing is graded until the first pass starts
     // (in _onRepeat), so a hit during it can't count against the player.
     this.countInPlaying = true;
     this.engine.stop();
 
-    // Start clearing loop with rendering disabled (no playline or
-    // circles visible during count-in).
-    this.renderer._renderingEnabled = false;
-    this.renderer.scheduleMeasureClearing(lastMeasureStartMs);
-
-    this.renderer.startPlayLine(
-      () => performance.now() - this.sessionStartTime - this._latencyMs()
-    );
-    this._startWatchingMisses();
+    // A just-resumed audio context takes a moment to report when its output is heard; the
+    // count-in plays meanwhile and nothing is drawn or graded before the clock is known.
+    this.audioClock
+      .whenRunning()
+      .then(() => {
+        this.sessionStartTime = this.audioClock.heardAt(passContextTime) - lastMeasureStartMs;
+        // Start clearing loop with rendering disabled (no playline or
+        // circles visible during count-in).
+        this.renderer._renderingEnabled = false;
+        this.renderer.scheduleMeasureClearing(lastMeasureStartMs);
+        this.renderer.startPlayLine(
+          () => performance.now() - this.sessionStartTime - this._latencyMs()
+        );
+        this._startWatchingMisses();
+      })
+      .catch((error) => {
+        console.error('[Controller] Could not time the session:', error);
+        this.stopSession();
+        this._showError(
+          'The audio output did not start, so the coach cannot time your hits. ' +
+            'Stop any other app using the audio device and start again.'
+        );
+      });
 
     // show the first line during the count-in, before the playline appears on it
     this._scrollToLine(document.getElementById('sheetMusicDiv'));
@@ -293,9 +311,9 @@ export class Controller {
 
   /**
    * Called at the end of each repetition in multi-repetition mode
-   * @param {number} scheduledAt - performance.now() when the next pass was scheduled to start
+   * @param {number} passContextTime - the audio time the next pass was scheduled from, in s
    */
-  _onRepeat(scheduledAt) {
+  _onRepeat(passContextTime) {
     // the count-in ending starts the first pass; it isn't a repetition of the groove
     if (this.countInPlaying) this.countInPlaying = false;
     else this.currentRepetition++;
@@ -310,7 +328,7 @@ export class Controller {
     // No back-dating: _onPlaybackStart back-dates sessionStartTime to
     // simulate the count-in as the groove's last measure, but repeats
     // start at groove time 0 with no count-in.
-    this.sessionStartTime = scheduledAt;
+    this.sessionStartTime = this.audioClock.heardAt(passContextTime);
     // the tempo changed for this pass (auto BPM, or by hand): expect its notes at their new times
     if (this.grooveWriter.myGrooveUtils.getTempo() !== this.timelineTempo) this._loadTimeline();
     this.engine.start(this.sessionStartTime);
@@ -511,6 +529,8 @@ export class Controller {
       this.goalStreak = 0;
 
       // 3. Activate coaching mode
+      this.audioClock ??= new AudioClock(MIDI.Player.ctx);
+      this.audioClock.start();
       this.isCoachingActive = true;
       this.currentRepetition = 0;
       this.nextPassHits = [];
@@ -600,6 +620,7 @@ export class Controller {
    */
   stopSession() {
     this.isCoachingActive = false;
+    if (this.audioClock) this.audioClock.stop();
     this.countInPlaying = false;
     this.nextPassHits = [];
     this._stopWatchingMisses();
@@ -992,6 +1013,32 @@ export class Controller {
   /**
    * Show a one-time prompt suggesting configuration before first session.
    */
+  /**
+   * Tell the player something went wrong, in the coach's own dialog style.
+   * @param {string} message - what happened and what to do, in plain words
+   */
+  _showError(message) {
+    let dialog = document.getElementById('coachErrorDialog');
+    if (!dialog) {
+      dialog = document.createElement('div');
+      dialog.id = 'coachErrorDialog';
+      dialog.className = 'coach-sheet coach-error-dialog';
+      dialog.innerHTML = `
+                <h2>Drum Coach</h2>
+                <p id="coach-error-message"></p>
+                <div class="coach-dialog-buttons">
+                    <button class="coach-btn coach-btn-primary" id="coach-error-ok">OK</button>
+                </div>
+            `;
+      document.body.appendChild(dialog);
+      dialog.querySelector('#coach-error-ok').addEventListener('click', () => {
+        dialog.style.display = 'none';
+      });
+    }
+    dialog.querySelector('#coach-error-message').textContent = message;
+    dialog.style.display = 'block';
+  }
+
   _showSetupPrompt(message) {
     // Reuse the settings dialog pattern — create a simple prompt overlay
     let prompt = document.getElementById('coachSetupPrompt');
@@ -1057,11 +1104,11 @@ export class Controller {
   }
 
   /**
-   * Current delay from GrooveScribe scheduling a note to the player's hit on it arriving.
-   * The groove's audio is scheduled on the MIDI.js player's AudioContext.
+   * Delay from the player hearing a note to their hit on it arriving: the calibration offset.
+   * The session's clock already starts each pass when its sound is heard (see AudioClock).
    */
   _latencyMs() {
-    return this.latencyManager.getTotalOffset(MIDI.Player.ctx);
+    return coachState.calibrationOffset;
   }
 
   async _ensureMidiConnected() {
@@ -1070,7 +1117,11 @@ export class Controller {
       await this.midiHandler.connect();
       this.midiConnected = true;
     } catch (e) {
-      console.warn('[Controller] MIDI failed to connect', e);
+      console.error('[Controller] MIDI failed to connect', e);
+      this._showError(
+        `The coach couldn't connect to MIDI (${e.message}), so it can't hear your kit. ` +
+          'Check that the kit is connected and the browser may use MIDI devices.'
+      );
     }
   }
 

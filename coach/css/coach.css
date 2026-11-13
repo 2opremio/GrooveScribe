@@ -1103,6 +1103,17 @@
   color: #a76400;
 }
 
+/* ---- Error dialog ---- */
+
+.coach-error-dialog {
+  z-index: 2004;
+  width: 420px;
+}
+
+.coach-error-dialog p {
+  line-height: 1.4;
+}
+
 /* ---- Setup Prompt (first-run nudge) ---- */
 
 .coach-setup-prompt {

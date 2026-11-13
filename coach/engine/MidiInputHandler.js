@@ -7,6 +7,9 @@ export class MidiInputHandler {
   constructor(options = {}) {
     this.midiAccess = null;
     this.onHit = options.onHit || (() => {});
+    // (inputName) => void: an input sends notes the browser can't time; reported once per input
+    this.onUntimedInput = options.onUntimedInput || (() => {});
+    this._untimedInputs = new Set();
     this.drumMap = options.drumMap || {};
     // Hi-hat CC config: { enabled, cc, threshold }
     this.hihatCC = options.hihatCC || { enabled: false, cc: 4, threshold: 64 };
@@ -32,6 +35,20 @@ export class MidiInputHandler {
     }
   }
 
+  /**
+   * A MIDI source that sends its notes without a time leaves the browser stamping every one
+   * of them 0, so they can't be graded: they're refused, and the input reported once.
+   */
+  _isTimed(event) {
+    if (event.timeStamp !== 0) return true;
+    const name = event.target.name;
+    if (!this._untimedInputs.has(name)) {
+      this._untimedInputs.add(name);
+      this.onUntimedInput(name);
+    }
+    return false;
+  }
+
   _handleMidiMessage(event) {
     const [status, data1, data2] = event.data;
 
@@ -55,7 +72,7 @@ export class MidiInputHandler {
         ) {
           drum = 'hh_closed';
         }
-        this.onHit(drum, event.timeStamp, data2);
+        if (this._isTimed(event)) this.onHit(drum, event.timeStamp, data2);
       }
     }
   }

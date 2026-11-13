@@ -1,4 +1,5 @@
 import { coachState } from '../state/State.js';
+import { AudioClock } from '../engine/AudioClock.js';
 
 const CALIBRATION_BPM = 80;
 const BEAT_INTERVAL_MS = 60000 / CALIBRATION_BPM; // 750ms
@@ -16,6 +17,11 @@ const CLICK_MAX_GAIN = 0.9;
 const TIMING_STRIP_RANGE_MS = 80; // strip shows +/- this many ms
 // velocity given to a keyboard tap; one key press is the only tap on its beat
 const KEYBOARD_TAP_VELOCITY = 100;
+// A tap further from the run's median than this many median absolute deviations is a slip
+// (a missed click, a double hit), not the player's timing; scaled by 1.4826, a MAD estimates
+// the standard deviation, so this keeps taps within about 3 of them.
+const OUTLIER_MADS = 3;
+const MAD_TO_SD = 1.4826;
 
 /**
  * CalibrationDialog - Tap-along latency calibration.
@@ -24,9 +30,9 @@ const KEYBOARD_TAP_VELOCITY = 100;
  * the median timing offset to store as calibrationOffset.
  */
 export class CalibrationDialog {
-  constructor({ midiHandler, latencyManager }) {
+  constructor({ midiHandler }) {
     this.midiHandler = midiHandler;
-    this.latencyManager = latencyManager;
+    this._clock = null; // when the clicks are heard; created with the audio context
     this.container = null;
     this._audioCtx = null;
     this._active = false;
@@ -35,7 +41,7 @@ export class CalibrationDialog {
     // the counted taps, as {beat, error, velocity, dot}, keyed per coachState.calibrationHitRule
     this._taps = new Map();
     this._resultMs = null; // calibration offset from the last completed run
-    this._beatTimes = []; // scheduled click times in the performance.now() domain, before output delay
+    this._beatTimes = []; // when each click is heard, in the performance.now() domain
     this._schedulerTimer = null;
     this._pendingClicks = []; // oscillators scheduled for the tapping phase, stopped when it ends
     this._countdownLeft = 0;
@@ -194,16 +200,24 @@ export class CalibrationDialog {
     // Hook keyboard input — any key counts as a tap
     document.addEventListener('keydown', this._onKeyDown);
 
-    // Schedule all beats up front in audio time for precise timing
-    this._scheduleBeatClicks();
-    this._active = true;
+    // Schedule all beats up front in audio time for precise timing, once the clock knows
+    // when they will be heard
+    this._clock
+      .whenRunning()
+      .then(() => {
+        this._scheduleBeatClicks();
+        this._active = true;
+      })
+      .catch((error) => {
+        console.error('[CalibrationDialog] Could not time the clicks:', error);
+        this._stop();
+        this.container.querySelector('#calib-running-offset').textContent =
+          'The audio output did not start, so calibration cannot run. Close this and try again.';
+      });
   }
 
   _scheduleBeatClicks() {
-    const audioCtx = this._audioCtx;
-    // Bridge time domains: snapshot both clocks now
-    const perfNow = performance.now();
-    const audioNow = audioCtx.currentTime;
+    const audioNow = this._audioCtx.currentTime;
 
     // a couple of clicks beyond the last counted tap, so a slightly late final tap still
     // has a click to land on; _stopPendingClicks silences them once tapping ends
@@ -211,7 +225,7 @@ export class CalibrationDialog {
     for (let i = 0; i < totalBeats; i++) {
       const audioTime = audioNow + (i * BEAT_INTERVAL_MS) / 1000;
       this._pendingClicks.push(this._scheduleClickAt(audioTime));
-      this._beatTimes.push(perfNow + i * BEAT_INTERVAL_MS);
+      this._beatTimes.push(this._clock.heardAt(audioTime));
     }
   }
 
@@ -229,17 +243,14 @@ export class CalibrationDialog {
     if (!this._active) return;
     if (velocity < coachState.minHitVelocity) return;
 
-    // The browser's output delay is read at tap time, exactly as sessions read it, so the
-    // calibration offset is whatever remains on top of it.
-    const outputDelay = this.latencyManager.outputDelayMs(this._audioCtx);
-
-    // Find the nearest beat
+    // Click times are when each click is heard, as sessions grade against when each note is
+    // heard, so the calibration offset is whatever remains after the browser's output delay.
     let beat = 0;
     for (let i = 1; i < this._beatTimes.length; i++) {
-      const dist = (b) => Math.abs(timestamp - (this._beatTimes[b] + outputDelay));
+      const dist = (b) => Math.abs(timestamp - this._beatTimes[b]);
       if (dist(i) < dist(beat)) beat = i;
     }
-    const error = timestamp - (this._beatTimes[beat] + outputDelay);
+    const error = timestamp - this._beatTimes[beat];
 
     // 'loudest' keys taps by their click, so a louder hit replaces a softer one on the same
     // click; 'every' gives each hit its own key
@@ -269,7 +280,7 @@ export class CalibrationDialog {
         return;
       }
       // a louder hit can still replace this click's tap until the next click is nearer
-      const beatWindowEnd = this._beatTimes[beat] + outputDelay + BEAT_INTERVAL_MS / 2;
+      const beatWindowEnd = this._beatTimes[beat] + BEAT_INTERVAL_MS / 2;
       setTimeout(() => this._finishTapping(), Math.max(0, beatWindowEnd - performance.now()));
     }
   }
@@ -321,7 +332,9 @@ export class CalibrationDialog {
     this._stopPendingClicks();
     this._restoreMidiHandler();
 
-    const usableTaps = this._tapErrors.slice(WARMUP_TAPS);
+    const countedTaps = this._tapErrors.slice(WARMUP_TAPS);
+    const usableTaps = withoutSlips(countedTaps);
+    const slips = countedTaps.length - usableTaps.length;
     this._resultMs = Math.round(this._computeMedian(usableTaps));
     const spread = this._computeStdDev(usableTaps);
     // standard error of the result: how far another run would typically land from this one
@@ -338,7 +351,9 @@ export class CalibrationDialog {
     explEl.textContent =
       `Your taps landed ${Math.abs(this._resultMs)} ms ${direction} the click on average ` +
       `(accurate to about \u00b1${Math.round(precision)} ms). ` +
-      `Taps varied by about \u00b1${Math.round(spread)} ms. Sessions are graded with this offset.`;
+      `Taps varied by about \u00b1${Math.round(spread)} ms` +
+      slipsText(slips) +
+      '. Sessions are graded with this offset.';
   }
 
   _accept() {
@@ -374,6 +389,10 @@ export class CalibrationDialog {
     // Resume if suspended (autoplay policy)
     if (this._audioCtx.state === 'suspended') {
       this._audioCtx.resume();
+    }
+    if (!this._clock) {
+      this._clock = new AudioClock(this._audioCtx);
+      this._clock.start();
     }
   }
 
@@ -444,6 +463,10 @@ export class CalibrationDialog {
     }
     this._restoreMidiHandler();
     document.removeEventListener('keydown', this._onKeyDown);
+    if (this._clock) {
+      this._clock.stop();
+      this._clock = null;
+    }
   }
 
   _restoreMidiHandler() {
@@ -452,4 +475,29 @@ export class CalibrationDialog {
       this._originalMidiOnHit = null;
     }
   }
+}
+
+/**
+ * The taps without the slips: those further from the median than OUTLIER_MADS deviations.
+ * @param {number[]} errors - tap timing errors, ms
+ * @returns {number[]}
+ */
+function withoutSlips(errors) {
+  const median = medianOf(errors);
+  const mad = medianOf(errors.map((e) => Math.abs(e - median))) * MAD_TO_SD;
+  // every tap equally far off: nothing stands out as a slip
+  if (mad < Number.EPSILON) return errors;
+  return errors.filter((e) => Math.abs(e - median) <= OUTLIER_MADS * mad);
+}
+
+/** How many far-off taps were left out, as a clause; empty when none were. */
+function slipsText(slips) {
+  if (slips === 0) return '';
+  return `, leaving out ${slips} far-off ${slips === 1 ? 'tap' : 'taps'}`;
+}
+
+function medianOf(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
