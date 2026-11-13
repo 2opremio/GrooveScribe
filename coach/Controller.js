@@ -68,6 +68,7 @@ export class Controller {
     this.sessionStartTime = 0;
     this.currentRepetition = 0;
     this.countInPlaying = false; // the count-in runs before the first graded pass
+    this.countInAfterTempoChange = false; // a raised tempo is counted in before the next pass
     this.nextPassHits = []; // hits waiting for the next pass to start; see _fitsNextPass
     this.lastPassScore = null; // the last pass played to the end
     this.lastPassOffset = null; // median timing error of the last pass, ms; see _recenter
@@ -202,6 +203,14 @@ export class Controller {
       if (this.isCoachingActive) this._onPlaybackStart(passContextTime);
     };
 
+    // A new tempo takes effect by reloading the song when the pass ends; after a raise, the
+    // count-in plays first (GrooveScribe loads it when told playback is starting).
+    const originalLoadMidiData = utils.midiEventCallbacks.loadMidiDataEvent;
+    utils.midiEventCallbacks.loadMidiDataEvent = (root, playStarting) => {
+      const countIn = this.isCoachingActive && this.countInAfterTempoChange;
+      originalLoadMidiData(root, playStarting || countIn);
+    };
+
     // A pause would freeze the song while the session's clock runs on, marking every note
     // missed and taking the resume for a new session: during a session, pausing stops it, as
     // the play button does.
@@ -259,9 +268,6 @@ export class Controller {
     // starting at the start of the pass's last measure.
     // The clearing thresholds will fire for measure 0 during count-in,
     // ensuring it's cleared before any rushing hits arrive.
-    const measureDurationMs = this.renderer.measureDurationMs;
-    const lastMeasureStartMs = this.renderer.passDurationMs - measureDurationMs;
-
     // The count-in is for listening: nothing is graded until the first pass starts
     // (in _onRepeat), so a hit during it can't count against the player.
     this.countInPlaying = true;
@@ -272,11 +278,7 @@ export class Controller {
     this.audioClock
       .whenRunning()
       .then(() => {
-        this.sessionStartTime = this.audioClock.heardAt(passContextTime) - lastMeasureStartMs;
-        // Start clearing loop with rendering disabled (no playline or
-        // circles visible during count-in).
-        this.renderer._renderingEnabled = false;
-        this.renderer.scheduleMeasureClearing(lastMeasureStartMs);
+        this._timeCountIn(passContextTime);
         this.renderer.startPlayLine(
           () => performance.now() - this.sessionStartTime - this._latencyMs()
         );
@@ -297,6 +299,19 @@ export class Controller {
   }
 
   /**
+   * Time a count-in: it plays as the pass's last measure, so the clearing loop sees the
+   * measure before the loop point and clears measure 0 before any rushing hits arrive.
+   * Nothing is drawn until the pass starts.
+   * @param {number} passContextTime - the audio time the count-in was scheduled from, in s
+   */
+  _timeCountIn(passContextTime) {
+    const lastMeasureStartMs = this.renderer.passDurationMs - this.renderer.measureDurationMs;
+    this.sessionStartTime = this.audioClock.heardAt(passContextTime) - lastMeasureStartMs;
+    this.renderer._renderingEnabled = false;
+    this.renderer.scheduleMeasureClearing(lastMeasureStartMs);
+  }
+
+  /**
    * Called when MIDI playback stops - handles performance results
    */
   _onPlaybackStop() {
@@ -314,6 +329,16 @@ export class Controller {
    * @param {number} passContextTime - the audio time the next pass was scheduled from, in s
    */
   _onRepeat(passContextTime) {
+    // a raised tempo: the count-in at the new tempo plays before the next pass
+    if (this.countInAfterTempoChange) {
+      this.countInAfterTempoChange = false;
+      this.countInPlaying = true;
+      this.engine.stop();
+      this._loadTimeline();
+      this._timeCountIn(passContextTime);
+      this._refreshScorePanel();
+      return;
+    }
     // the count-in ending starts the first pass; it isn't a repetition of the groove
     if (this.countInPlaying) this.countInPlaying = false;
     else this.currentRepetition++;
@@ -394,6 +419,8 @@ export class Controller {
         utils.setTempo(utils.getTempo() + coachState.autoBpmStep);
         // the best at this tempo is now the best at the new one
         this.bestKey = this._bestKey();
+        // the new tempo is counted in before the next pass, as at the start
+        this.countInAfterTempoChange = coachState.countIn;
       }
     }
     this._refreshScorePanel();
@@ -607,6 +634,7 @@ export class Controller {
     this.isCoachingActive = false;
     if (this.audioClock) this.audioClock.stop();
     this.countInPlaying = false;
+    this.countInAfterTempoChange = false;
     this.nextPassHits = [];
     this._stopWatchingMisses();
     this.engine.stop();
