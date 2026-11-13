@@ -19,6 +19,13 @@
         "groove": "?TimeSig=4/4&Div=16&Tempo=80&Measures=14&Repeats=4&Title=Insausti%20p34&H=|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|&S=|----o-------o---|----o-------o---|------------o---|----o--o----o---|----o-------o--o|----o--o----o---|----o--o-o--o---|----o-------o---|--o-----o-----o-|----o-------o--o|----o-------o---|----o-------o---|----o-------o---|----o-------o---|&K=|o------o--o---o-|o--o--o-o-------|o-----o---------|o-------o--o--o-|o-----o-o-----o-|o-o-------o-----|o-------o-o---o-|o------oo-------|o---o-o---o-o---|o--o--o---o-----|o------oo-o-----|--o---o-o-------|o-------o-o--o--|o--o--o-o--o--o-|",
         "createdAt": 1794488564494
       }
+    },
+    "Half-time": {
+      "groove_1794567382795": {
+        "name": "Half-time cross-stick & kick comping, each bar x4",
+        "groove": "?TimeSig=4/4&Div=16&Title=Half-time%20comping&Tempo=140&Measures=12&Repeats=4&H=|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|&S=|--------x-------|--------x-------|--------x-------|--------x-------|--------x------x|-------xx-------|--------x-----x-|--------x--x----|-------xx------x|--------x--x--x-|--------x-------|--------x-----xx|&K=|o---------------|o---------o-----|o-----o---------|o-----o---o---o-|o---------o-----|o---------o-----|o-----o---------|o-----o---------|o---------o-----|o--o--o---------|o---------------|o-----o---o-o---|",
+        "createdAt": 1794567382795
+      }
     }
   }
 }
