@@ -180,3 +180,26 @@ describe('Drum Coach wrong-drum hits', () => {
     expect(mistakes(engine.passScore())).toBe(2); // the stray, and the snare nobody played
   });
 });
+
+describe('Drum Coach flams and drags', () => {
+  // a flam or drag note: the score marks it snare_flam, played as grace strokes then the main one
+  const flam = [{ time: 1000, type: DrumType.SNARE_FLAM }];
+  const play = (strokeTimes) => {
+    const engine = playingEngine(flam, 1000);
+    for (const t of strokeTimes) engine.handleMidiHit(DrumType.SNARE, engine.startTime + t);
+    engine.finishPass();
+    return engine.passScore();
+  };
+
+  it('grade a flam by its main stroke, with no mistake for the grace stroke', () => {
+    expect(play([970, 1000])).toMatchObject({ perfect: 1, missed: 0, stray: 0 });
+  });
+
+  it('grade a drag by its main stroke, with no mistake for either grace stroke', () => {
+    expect(play([950, 975, 1000])).toMatchObject({ perfect: 1, missed: 0, stray: 0 });
+  });
+
+  it('grade a single stroke on a flam note instead of missing the note', () => {
+    expect(play([1000])).toMatchObject({ perfect: 1, missed: 0, stray: 0 });
+  });
+});

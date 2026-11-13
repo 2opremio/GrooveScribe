@@ -717,19 +717,13 @@ export class Controller {
 
     // Calculate hit time relative to groove start (subtract audio latency)
     const hitTimeMs = timestamp - this.sessionStartTime - this._latencyMs();
-    const effectiveDrum = evaluation.isGraceNote ? DrumType.FLAM_GRACE : drum;
 
     if (evaluation.isMatch) {
       // Find target note for precise ABC indexing metadata
       const matchedNote = this.engine.noteTimeline.find(
         (n) => n.originalIndex === evaluation.noteIndex
       );
-      const abcIndex = matchedNote
-        ? this.abcMapper.getIndex(
-            matchedNote.tickIndex,
-            evaluation.isGraceNote ? 'snare_flam' : drum
-          )
-        : null;
+      const abcIndex = matchedNote ? this.abcMapper.getIndex(matchedNote.tickIndex, drum) : null;
 
       // Draw feedback at pre-calculated sniffed coordinate.
       // Use the note's expected time (not hitTimeMs) for coordinate lookup,
@@ -739,7 +733,7 @@ export class Controller {
         matchedNote.time,
         evaluation.tier,
         evaluation.timingError,
-        effectiveDrum,
+        drum,
         abcIndex >= 0 ? abcIndex : null
       );
     } else {

@@ -3,14 +3,11 @@ import { evaluateHit } from './TimingEvaluator.js';
 import { emptyScore } from './PassScore.js';
 
 // Timing thresholds (ms) for matching incoming MIDI hits to expected notes
-const GRACE_NOTE_EARLY_LIMIT_MS = 20; // A grace hit can be up to this many ms late
-const GRACE_NOTE_MATCH_WINDOW_MS = 100; // Total window around expected time for grace matching
 export const NORMAL_HIT_MATCH_WINDOW_MS = 150; // Max distance from expected note before counting as extra
 
 // The furthest (in ms) a note can be from the hit time and still be matchable.
 // Used for cursor advancement (skipping old notes) and scan termination.
-// Must be >= all individual match windows to avoid skipping matchable notes.
-const SCAN_RADIUS_MS = Math.max(NORMAL_HIT_MATCH_WINDOW_MS, GRACE_NOTE_MATCH_WINDOW_MS);
+const SCAN_RADIUS_MS = NORMAL_HIT_MATCH_WINDOW_MS;
 
 /**
  * Engine - Manages the coaching session
@@ -210,43 +207,17 @@ export class Engine {
   }
 
   /**
-   * Evaluate a single timeline note as a candidate match for the incoming hit.
-   *
-   * Checks type compatibility (including flam grace notes), matched status,
-   * and whether the hit falls within the appropriate timing window.
-   *
-   * @param {Object} note - Timeline note to evaluate
-   * @param {string} drum - Incoming MIDI drum type
-   * @param {number} relativeHitTime - Hit timestamp relative to session start (ms)
-   * @param {number} latency - Current scheduling-to-hit delay (ms), from latencyMs()
-   * @returns {{ absDiff: number, isGraceNote: boolean } | null} Match info, or null if not a candidate
+   * Whether a note can take this hit, and how far off the hit is.
+   * A flam or drag (editor type snare_flam) takes several strokes; each later stroke in reach
+   * is graded in place of the one before, which becomes a grace stroke. That grades the last
+   * stroke, the main one, however many grace strokes come first, and a single stroke as well.
+   * @returns {{ absDiff: number } | null} Match info, or null if not a candidate
    */
   _evaluateCandidate(note, drum, relativeHitTime, latency) {
-    const isMatch = this._isTypeMatch(drum, note.type);
-    // Special case: snare can match snare_flam as the grace note.
-    // note.type is normalized to 'snare', so we check editorType for flam.
-    const isFlamGraceMatch = drum === DrumType.SNARE && note.editorType === DrumType.SNARE_FLAM;
-
-    if (!isMatch && !isFlamGraceMatch) return null;
-    if (note.matched) return null;
-
-    const targetTime = note.time + latency;
-    const diff = relativeHitTime - targetTime; // Signed: negative = early
-    const absDiff = Math.abs(diff);
-
-    // Flam grace notes: allow early or slightly late hits within a generous window
-    if (
-      isFlamGraceMatch &&
-      diff < GRACE_NOTE_EARLY_LIMIT_MS &&
-      absDiff <= GRACE_NOTE_MATCH_WINDOW_MS &&
-      !note.graceMatched
-    ) {
-      return { absDiff, isGraceNote: true };
-    }
-    if (isMatch && absDiff <= NORMAL_HIT_MATCH_WINDOW_MS) {
-      return { absDiff, isGraceNote: false };
-    }
-    return null;
+    if (!this._isTypeMatch(drum, note.type)) return null;
+    if (note.matched && note.editorType !== DrumType.SNARE_FLAM) return null;
+    const absDiff = Math.abs(relativeHitTime - (note.time + latency));
+    return absDiff <= NORMAL_HIT_MATCH_WINDOW_MS ? { absDiff } : null;
   }
 
   /**
@@ -314,7 +285,6 @@ export class Engine {
 
     // Step 2: Forward scan from cursor, matching against relativeHitTime.
     let bestMatch = null; // direct reference to the timeline note
-    let bestIsGrace = false;
     let minDiff = Infinity;
 
     for (let i = this._searchCursor; i < tl.length; i++) {
@@ -326,7 +296,6 @@ export class Engine {
       if (result && result.absDiff < minDiff) {
         minDiff = result.absDiff;
         bestMatch = note;
-        bestIsGrace = result.isGraceNote;
       }
     }
 
@@ -337,38 +306,24 @@ export class Engine {
       return evaluation;
     }
 
-    let evaluation;
-    if (bestIsGrace) {
-      // Grace note for flam: grade as 'perfect' since being early is expected behavior
-      // Flams have inherently flexible timing — the grace note SHOULD be early
-      // Don't mark the main note as matched — the primary hit still needs to come
-      evaluation = {
-        timingError: -minDiff, // Negative = early
-        tier: 'perfect',
-        isMatch: true,
-        isGraceNote: true,
-        noteIndex: bestMatch.originalIndex,
-      };
-      // Mark grace slot as matched so subsequent hits match the primary slot
-      bestMatch.graceMatched = true;
+    let evaluation = evaluateHit(timestamp, this.startTime + bestMatch.time, latency, this.windows);
+    if (evaluation.isMatch) {
+      evaluation.noteIndex = bestMatch.originalIndex;
+      // a later stroke of a flam or drag: the stroke graded so far was a grace stroke
+      if (bestMatch.gradedResult) bestMatch.gradedResult.isGraceNote = true;
+      bestMatch.gradedResult = evaluation;
+      bestMatch.matched = true;
     } else {
-      // Normal hit evaluation
-      evaluation = evaluateHit(timestamp, this.startTime + bestMatch.time, latency, this.windows);
-      if (evaluation.isMatch) {
-        evaluation.noteIndex = bestMatch.originalIndex;
-        bestMatch.matched = true;
-      } else {
-        // Outside every grading window: a stray hit, and the note stays open for a
-        // better-timed one (or counts as missed), so each note lands in exactly one tier.
-        // The note it was closest to is kept, to show the hit by it.
-        evaluation = {
-          timingError: evaluation.timingError,
-          tier: 'extra',
-          isMatch: false,
-          drum,
-          nearestNoteIndex: bestMatch.originalIndex,
-        };
-      }
+      // Outside every grading window: a stray hit, and the note stays open for a
+      // better-timed one (or counts as missed), so each note lands in exactly one tier.
+      // The note it was closest to is kept, to show the hit by it.
+      evaluation = {
+        timingError: evaluation.timingError,
+        tier: 'extra',
+        isMatch: false,
+        drum,
+        nearestNoteIndex: bestMatch.originalIndex,
+      };
     }
 
     this.results.push(evaluation);
