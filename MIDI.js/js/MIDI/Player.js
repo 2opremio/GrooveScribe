@@ -140,12 +140,26 @@ root.loadFile = function (file, callback) {
 
 // Playing the audio
 
+// The song's first tick plays this long after a pass starts; the song's length doesn't include it.
+var LEAD_IN_MS = 0.5;
+
 var eventQueue = []; // hold events to be triggered
 var queuedTime; // 
 var startTime = 0; // to measure time elapse
+// The audio time, in seconds, that the song's time 0 sits at in the pass being played. Every
+// batch of a pass is scheduled against it, and each loop starts exactly one song length after
+// the last: scheduling from the moment a timer fires instead would push the audio later by that
+// timer's lateness at every batch and every loop.
+var passStartContextTime = 0;
+
+// The audio time, in seconds, the song's first tick plays at in the pass being played, for
+// anything timed against the audio.
+root.passStartContextTime = function () {
+	return passStartContextTime + LEAD_IN_MS / 1000;
+};
 var noteRegistrar = {}; // get event for requested note
 var onMidiEvent = undefined; // listener callback
-var scheduleTracking = function (channel, note, currentTime, offset, message, velocity) {
+var scheduleTracking = function (channel, note, currentTime, delayMs, message, velocity) {
 	var interval = window.setTimeout(function () {
 		var data = {
 			channel: channel,
@@ -161,6 +175,14 @@ var scheduleTracking = function (channel, note, currentTime, offset, message, ve
 		} else {
 			noteRegistrar[note] = data;
 		}
+		// the last event of a looping tune: the next pass starts one song length after this one,
+		// set before the callback so a repeat callback sees the pass it starts. The queue is
+		// empty once this event leaves it; it can already be empty, when a reload in an earlier
+		// callback let that event's timer take an entry from the reloaded tune's queue.
+		var loops = root.shouldLoop && currentTime == root.endTime && eventQueue.length <= 1;
+		if (loops) {
+			passStartContextTime += (root.endTime - LEAD_IN_MS) / 1000;
+		}
 		if (onMidiEvent) {
 			onMidiEvent(data);
 		}
@@ -170,7 +192,8 @@ var scheduleTracking = function (channel, note, currentTime, offset, message, ve
 		eventQueue.shift();
 		
 		
-		if(root.shouldLoop && (root.currentTime == root.endTime)  && eventQueue.length == 0 ) {
+		// the callback may have turned looping off, or reloaded the tune and started it again
+		if(loops && root.shouldLoop && eventQueue.length == 0 ) {
 			// at the end of the current tune.   If we are repeating we need to requeue
 			// we check to make sure the eventQueue is empty since we may have reloaded the tune
 			// in the callback and have essentially already caused the loop
@@ -180,7 +203,7 @@ var scheduleTracking = function (channel, note, currentTime, offset, message, ve
 			startAudio(queuedTime + .001, true);
 		} 
 		
-	}, currentTime - offset);
+	}, Math.max(0, delayMs));
 	return interval;
 };
 
@@ -196,7 +219,7 @@ var getContext = function() {
 var getLength = function() {
 	var data =  root.data;
 	var length = data.length;
-	var totalTime = 0.5;
+	var totalTime = LEAD_IN_MS;
 	for (var n = 0; n < length; n++) {
 		totalTime += data[n][1];
 	}
@@ -218,8 +241,9 @@ var startAudio = function (currentTime, fromCache) {
 	var data = root.data;	
 	var ctx = getContext();
 	var length = data.length;
+	var passStartSet = fromCache;
 	//
-	queuedTime = 0.5;
+	queuedTime = LEAD_IN_MS;
 	startTime = ctx.currentTime;
 	//
 	for (var n = 0; n < length; n++) {
@@ -238,6 +262,13 @@ var startAudio = function (currentTime, fromCache) {
 		}	    
 		
 		currentTime = queuedTime - offset;
+		if (!passStartSet) {
+			// a fresh start (or resume): the first event plays now, as before
+			passStartContextTime = ctx.currentTime - offset / 1000;
+			passStartSet = true;
+		}
+		var eventContextTime = passStartContextTime + queuedTime / 1000;
+		var delayMs = (eventContextTime - ctx.currentTime) * 1000;
 		var event = data[n][0].event;
 		if (event.type !== "channel") continue;
 		var channel = event.channel;
@@ -247,8 +278,8 @@ var startAudio = function (currentTime, fromCache) {
 				note = event.noteNumber - (root.MIDIOffset || 0);
 				eventQueue.push({
 					event: event,
-					source: MIDI.noteOn(channel, event.noteNumber, event.velocity, currentTime / 1000 + ctx.currentTime),
-					interval: scheduleTracking(channel, note, queuedTime, offset, 144, event.velocity)
+					source: MIDI.noteOn(channel, event.noteNumber, event.velocity, eventContextTime),
+					interval: scheduleTracking(channel, note, queuedTime, delayMs, 144, event.velocity)
 				});
 				messages ++;
 				break;
@@ -257,8 +288,8 @@ var startAudio = function (currentTime, fromCache) {
 				note = event.noteNumber - (root.MIDIOffset || 0);
 				eventQueue.push({
 					event: event,
-					source: MIDI.noteOff(channel, event.noteNumber, currentTime / 1000 + ctx.currentTime),
-					interval: scheduleTracking(channel, note, queuedTime, offset, 128)
+					source: MIDI.noteOff(channel, event.noteNumber, eventContextTime),
+					interval: scheduleTracking(channel, note, queuedTime, delayMs, 128)
 				});
 				break;
 			default:
