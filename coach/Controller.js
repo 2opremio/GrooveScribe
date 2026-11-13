@@ -933,8 +933,9 @@ export class Controller {
     if (!prompt) {
       prompt = document.createElement('div');
       prompt.id = 'coachSetupPrompt';
-      prompt.className = 'coach-setup-prompt';
+      prompt.className = 'coach-sheet coach-setup-prompt';
       prompt.innerHTML = `
+                <h2>Drum Coach</h2>
                 <p id="coach-setup-message"></p>
                 <div class="coach-dialog-buttons">
                     <button class="coach-btn coach-btn-secondary" id="coach-setup-skip">Skip</button>
