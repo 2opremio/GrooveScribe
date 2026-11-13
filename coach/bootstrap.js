@@ -10,8 +10,9 @@ const BUTTON_INJECT_MAX_RETRIES = 10; // 10 seconds total
 const initialQuery = window.location.search;
 
 // Resolves once window 'load' has fired. This module's listener is registered after
-// js/main.js's, so it runs after GrooveWriter.runsOnPageLoad has built the player and
-// loaded the URL's groove.
+// js/main.js's, so it runs after GrooveWriter.runsOnPageLoad has built the player, loaded the
+// URL's groove and installed its own playback callbacks (loadMidiDataEvent, notePlaying),
+// which would replace the coach's hooks if the coach set them up first.
 const pageLoaded = new Promise((resolve) => {
   if (document.readyState === 'complete') resolve();
   else window.addEventListener('load', resolve, { once: true });
@@ -34,6 +35,7 @@ async function bootstrap() {
     return;
   }
 
+  await pageLoaded;
   const controller = new Controller(window.myGrooveWriter);
   window.coachController = controller;
 
@@ -69,7 +71,6 @@ async function bootstrap() {
   // Auto-start coach mode if Mode=coach in URL
   const mode = utils.getQueryVariableFromString('Mode', '', initialQuery);
   if (mode === 'coach') {
-    await pageLoaded;
     try {
       await controller.startSession({ autoPlay: false });
     } catch (e) {
