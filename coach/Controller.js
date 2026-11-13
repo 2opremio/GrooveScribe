@@ -202,6 +202,15 @@ export class Controller {
       if (this.isCoachingActive) this._onPlaybackStart(passContextTime);
     };
 
+    // A pause would freeze the song while the session's clock runs on, marking every note
+    // missed and taking the resume for a new session: during a session, pausing stops it, as
+    // the play button does.
+    const originalPauseEvent = utils.midiEventCallbacks.pauseEvent;
+    utils.midiEventCallbacks.pauseEvent = (root) => {
+      if (originalPauseEvent) originalPauseEvent(root);
+      if (this.isCoachingActive) this.stopSession();
+    };
+
     // Intercept stop event
     utils.midiEventCallbacks.stopEvent = (root) => {
       if (originalStopEvent) originalStopEvent(root);
