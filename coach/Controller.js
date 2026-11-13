@@ -192,13 +192,12 @@ export class Controller {
     const originalRepeatCallback = utils.repeatCallback;
     const originalNotePlaying = utils.midiEventCallbacks.notePlaying;
 
-    // Both hooks run in the same task as MIDI.js scheduling the pass from the audio clock's
-    // "now", which doesn't advance within a task: reading it here gives exactly the audio time
-    // the pass was scheduled from, whether MIDI.js schedules it before or after the hook.
+    // Both hooks read the audio time MIDI.js scheduled the pass's start at: a loop starts one
+    // song length after the previous pass, a restart (count-in end, new tempo) starts now.
 
     // Intercept play event
     utils.midiEventCallbacks.playEvent = (root) => {
-      const passContextTime = MIDI.Player.ctx.currentTime;
+      const passContextTime = MIDI.Player.passStartContextTime();
       if (originalPlayEvent) originalPlayEvent(root);
       if (this.isCoachingActive) this._onPlaybackStart(passContextTime);
     };
@@ -220,7 +219,7 @@ export class Controller {
 
     // Intercept repeat callback for multi-repetition sessions
     utils.repeatCallback = () => {
-      const passContextTime = MIDI.Player.ctx.currentTime;
+      const passContextTime = MIDI.Player.passStartContextTime();
       if (originalRepeatCallback) originalRepeatCallback();
       if (this.isCoachingActive) this._onRepeat(passContextTime);
     };
