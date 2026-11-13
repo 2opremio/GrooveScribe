@@ -141,12 +141,48 @@ export class Engine {
 
   /**
    * Whether a stray hit is a mistake of its own: one with no note in reach, or an extra hit
-   * next to a note that was hit after all. Next to a note still open it isn't counted yet;
-   * if that note ends up missed, the miss is the mistake.
+   * next to a note that was hit after all. Next to a note still open (on its drum, or on
+   * another drum for a hit on the wrong drum) it isn't counted yet; if that note ends up
+   * missed, the miss is the mistake.
    */
   _isOwnMistake(stray) {
-    if (stray.nearestNoteIndex === undefined) return true;
-    return this.noteTimeline[stray.nearestNoteIndex].matched;
+    const noteIndex = stray.nearestNoteIndex ?? stray.intendedNoteIndex;
+    if (noteIndex === undefined) return true;
+    return this.noteTimeline[noteIndex].matched;
+  }
+
+  /**
+   * A hit with no note on its drum in reach: an extra hit, or an attempt at a note on another
+   * drum, which it is tied to (see _isOwnMistake).
+   */
+  _strayOffDrum(drum, relativeHitTime, latency) {
+    const evaluation = { timingError: 0, tier: 'extra', isMatch: false, drum };
+    const intended = this._nearestOpenNote(relativeHitTime, latency);
+    if (intended) evaluation.intendedNoteIndex = intended.originalIndex;
+    return evaluation;
+  }
+
+  /**
+   * The note, on any drum, that a hit on the wrong drum was most likely meant for: the nearest
+   * note still open (not hit, not missed) within matching reach. If that note ends up missed,
+   * the wrong hit and the miss are one mistake.
+   * @returns {Object|null}
+   */
+  _nearestOpenNote(relativeHitTime, latency) {
+    let nearest = null;
+    let minDiff = Infinity;
+    for (let i = this._searchCursor; i < this.noteTimeline.length; i++) {
+      const note = this.noteTimeline[i];
+      const diff = Math.abs(relativeHitTime - (note.time + latency));
+      if (note.time + latency - relativeHitTime > NORMAL_HIT_MATCH_WINDOW_MS) break;
+      if (note.matched || note.missed || note.isGrace || diff > NORMAL_HIT_MATCH_WINDOW_MS)
+        continue;
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearest = note;
+      }
+    }
+    return nearest;
   }
 
   /**
@@ -295,12 +331,7 @@ export class Engine {
     }
 
     if (!bestMatch) {
-      const evaluation = {
-        timingError: 0,
-        tier: 'extra',
-        isMatch: false,
-        drum: drum,
-      };
+      const evaluation = this._strayOffDrum(drum, relativeHitTime, latency);
       this.results.push(evaluation);
       this.onHitEvaluated(evaluation);
       return evaluation;
