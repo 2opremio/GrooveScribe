@@ -2,6 +2,10 @@ import { DrumType, ABC_PITCH_TO_DRUM_TYPE } from './DrumConstants.js';
 import { getNoteScaler, isTripletDivisionFromNotesPerMeasure } from '../../js/musicMath.js';
 import { measureSlotTicks, ticksToMs } from '../../js/noteTiming.js';
 
+// One ABC note: accidentals, a letter, octave marks. A slot holds one, or a chord of several
+// in brackets (GrooveScribe writes kick plus hi-hat foot as [F^d,]).
+const ABC_NOTE = /[_^=]*[A-Ga-g][,']*/g;
+
 /**
  * ABCIndexMapper - Maps ABC notation tick positions to rendered note indices
  * by simulating abc2svg's rendering order.
@@ -46,16 +50,9 @@ export class ABCIndexMapper {
       const hasSnare = data.snare_array[i] && data.snare_array[i] !== '';
       const hasHH = data.hh_array[i] && data.hh_array[i] !== '';
       const hasToms = data.toms_array && data.toms_array.some((arr) => arr[i] && arr[i] !== '');
-      const kickVal = data.kick_array[i];
-      const isKick =
-        kickStemsUp &&
-        kickVal &&
-        (kickVal === 'o' ||
-          kickVal === 'O' ||
-          kickVal === 'k' ||
-          kickVal === 'F' ||
-          kickVal === true);
-      const isFoot = kickStemsUp && !!kickVal && !isKick;
+      const feet = kickStemsUp ? this._feetIn(data.kick_array[i], i) : [];
+      const isKick = feet.includes(DrumType.KICK);
+      const isFoot = feet.includes(DrumType.HH_FOOT);
 
       if (hasSnare || hasHH || hasToms || isKick || isFoot) {
         if (hasSnare) {
@@ -99,15 +96,20 @@ export class ABCIndexMapper {
     // 3. Lower Voice (Feet only if rendered on separate stems)
     if (!kickStemsUp) {
       for (let i = 0; i < totalTicks; i++) {
-        const val = data.kick_array[i];
-        if (val) {
-          const isKick = val === 'o' || val === 'O' || val === 'k' || val === 'F' || val === true;
-          if (isKick) this.noteMap.set(`${i}:${DrumType.KICK}`, currentIndex);
-          else this.noteMap.set(`${i}:${DrumType.HH_FOOT}`, currentIndex);
+        const feet = this._feetIn(data.kick_array[i], i);
+        if (feet.length > 0) {
+          // a chord of both feet is one note in the rendered score
+          for (const foot of feet) this.noteMap.set(`${i}:${foot}`, currentIndex);
           currentIndex++;
         }
       }
     }
+  }
+
+  /** The foot drums (kick, hi-hat foot) in one slot of the feet voice. */
+  _feetIn(val, tickIndex) {
+    if (!val) return [];
+    return this.resolveAbcDrumTypes(val, 'kick', tickIndex);
   }
 
   /**
@@ -134,70 +136,57 @@ export class ABCIndexMapper {
 
     for (let i = 0; i < totalTicks; i++) {
       // Hi-Hats & Cymbals
-      if (data.hh_array[i]) {
-        const type = this.resolveAbcDrumType(data.hh_array[i], 'hh', i);
-        if (type) timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
-      }
-      // Snare variants
-      if (data.snare_array[i]) {
-        const type = this.resolveAbcDrumType(data.snare_array[i], 'snare', i);
-        if (type) timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
-      }
-      // Kick and Foot HH
-      if (data.kick_array[i]) {
-        const type = this.resolveAbcDrumType(data.kick_array[i], 'kick', i);
-        if (type) timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
-      }
-      // Toms (Unified 4-tom array)
-      if (data.toms_array) {
-        data.toms_array.forEach((row, idx) => {
-          if (row[i]) {
-            const type = this.resolveAbcDrumType(row[i], `tom${idx}`, i);
-            if (type) timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
-          }
-        });
+      const slots = [
+        [data.hh_array[i], 'hh'],
+        [data.snare_array[i], 'snare'],
+        [data.kick_array[i], 'kick'],
+        ...(data.toms_array || []).map((row, idx) => [row[i], `tom${idx}`]),
+      ];
+      for (const [val, arrayName] of slots) {
+        if (!val) continue;
+        // a chord in one slot is a note on each of its drums, graded on its own
+        for (const type of this.resolveAbcDrumTypes(val, arrayName, i)) {
+          timeline.push({ time: noteTimeMs(i), type, tickIndex: i });
+        }
       }
     }
     return timeline.sort((a, b) => a.time - b.time);
   }
 
   /**
-   * Resolve a raw ABC notation value (from grooveDataFromClickableUI) to a DrumType.
+   * The drums in one slot's raw ABC value (from grooveDataFromClickableUI): one note, or each
+   * note of a chord such as [F^d,] (kick plus hi-hat foot).
    *
    * Values may include decorations (e.g. "!open!^g", "!accent!c", "!(c!)", "{/c").
-   * The pitch is extracted by stripping decorations, then looked up in ABC_PITCH_TO_DRUM_TYPE.
-   * Decorations then override the base type (e.g. !open! on ^g → HH_OPEN instead of HH_CLOSED).
+   * The notes are read after stripping decorations, each looked up in ABC_PITCH_TO_DRUM_TYPE;
+   * decorations then pick the articulation (e.g. !open! on ^g → HH_OPEN instead of HH_CLOSED).
+   * A note GrooveScribe can't have written is reported and left out.
    *
-   * @returns {string|null} DrumType value, or null if unknown (with console warning)
+   * @returns {string[]} DrumType values
    */
-  resolveAbcDrumType(val, arrayName, tickIndex) {
+  resolveAbcDrumTypes(val, arrayName, tickIndex) {
+    if (val === true) return [DrumType.KICK]; // the kick array's legacy "on"
     // Strip ABC decorations: !xxx! patterns (e.g. !accent!, !open!, !(.!, !///!)
     let stripped = val.replace(/![^!]*!/g, '');
     // Strip grace note prefix: {/X} block (flam notation, e.g. {/c} before the main note)
     stripped = stripped.replace(/\{\/[^}]*\}/g, '');
-    const pitch = stripped;
-    const baseType = ABC_PITCH_TO_DRUM_TYPE[pitch];
-
-    if (!baseType) {
+    const drums = [];
+    for (const pitch of stripped.match(ABC_NOTE) || []) {
+      const baseType = ABC_PITCH_TO_DRUM_TYPE[pitch];
+      if (!baseType) {
+        console.warn(
+          `[ABCIndexMapper] Unknown ABC note in ${arrayName}[${tickIndex}]: ${JSON.stringify(pitch)} (value: ${JSON.stringify(val)})`
+        );
+        continue;
+      }
+      drums.push(articulation(val, baseType));
+    }
+    if (drums.length === 0) {
       console.warn(
-        `[ABCIndexMapper] Unknown ABC value in ${arrayName}[${tickIndex}]: ${JSON.stringify(val)} (pitch: ${JSON.stringify(pitch)})`
+        `[ABCIndexMapper] No notes in ${arrayName}[${tickIndex}]: ${JSON.stringify(val)}`
       );
-      return null;
     }
-
-    // Decoration overrides for articulation variants
-    if (val.includes('!open!')) return DrumType.HH_OPEN;
-    if (val.includes('!accent!')) {
-      // Flam with accent: the {/ grace block takes priority over accent
-      if (val.includes('{/')) return DrumType.SNARE_FLAM;
-      if (baseType === DrumType.SNARE) return DrumType.SNARE_ACCENT;
-      if (baseType === DrumType.HH_CLOSED) return DrumType.HH_ACCENT;
-    }
-    if (val.includes('!(')) return DrumType.SNARE_GHOST;
-    if (val.includes('{/')) return DrumType.SNARE_FLAM;
-    if (val.includes('!///!')) return DrumType.SNARE_BUZZ;
-
-    return baseType;
+    return drums;
   }
 
   /**
@@ -248,4 +237,23 @@ export class ABCIndexMapper {
 
     return { measures, notesPerMeasure, totalTicks, measureDurationMs, noteTimeMs };
   }
+}
+
+/**
+ * The articulation a slot's decorations give a drum, e.g. !open! turns a closed hi-hat open.
+ * @param {string} val - the slot's raw ABC value, decorations included
+ * @param {string} baseType - the drum the note's pitch names
+ */
+function articulation(val, baseType) {
+  if (val.includes('!open!')) return DrumType.HH_OPEN;
+  if (val.includes('!accent!')) {
+    // Flam with accent: the {/ grace block takes priority over accent
+    if (val.includes('{/')) return DrumType.SNARE_FLAM;
+    if (baseType === DrumType.SNARE) return DrumType.SNARE_ACCENT;
+    if (baseType === DrumType.HH_CLOSED) return DrumType.HH_ACCENT;
+  }
+  if (val.includes('!(')) return DrumType.SNARE_GHOST;
+  if (val.includes('{/')) return DrumType.SNARE_FLAM;
+  if (val.includes('!///!')) return DrumType.SNARE_BUZZ;
+  return baseType;
 }
