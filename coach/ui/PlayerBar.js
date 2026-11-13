@@ -104,9 +104,7 @@ export class PlayerBar {
     const labels = document.createElement('span');
     labels.id = 'coachStaticLabels';
     labels.className = 'coach-static-labels';
-    const bpm = utils.getTempo();
-    const swing = utils.getSwing();
-    labels.innerHTML = `BPM <strong>${bpm}</strong> &nbsp;|&nbsp; Swing <strong>${swing}%</strong>`;
+    labels.innerHTML = labelsHtml(utils);
 
     const playTime = document.getElementById('MIDIPlayTime' + idx);
     if (playTime && playTime.parentNode) {
@@ -212,4 +210,16 @@ export class PlayerBar {
     const groovesBtn = document.getElementById('groovesAnchor');
     if (groovesBtn) groovesBtn.style.display = '';
   }
+
+  /** Show the groove's tempo as it is now, after the coach raised it. */
+  showTempo() {
+    const labels = document.getElementById('coachStaticLabels');
+    if (!labels) throw new Error('[PlayerBar] the coach labels are not showing');
+    labels.innerHTML = labelsHtml(this.grooveWriter.myGrooveUtils);
+  }
+}
+
+/** The tempo and swing the session plays at, in place of their sliders. */
+function labelsHtml(utils) {
+  return `BPM <strong>${utils.getTempo()}</strong> &nbsp;|&nbsp; Swing <strong>${utils.getSwing()}%</strong>`;
 }
