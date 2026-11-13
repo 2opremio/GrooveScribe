@@ -4,16 +4,19 @@ const MS_PER_MINUTE = 60000;
 // 500 ms (above 120 bpm) their spread in ms flattens out at the motor floor.
 const MIN_BEAT_MS = 500;
 const MAX_BEAT_MS = 1000;
+// Nobody's spread gets below this, professional drummers playing to a click included (about
+// 10 ms at 120 bpm), and the browser's own timing jitter is a few ms on top.
+const MIN_SPREAD_MS = 10;
 // each tier's window, in spreads: blue within one, green within two, yellow within three
 const TIER_SPREADS = { perfect: 1, good: 2, close: 3 };
 
 /**
  * Experience levels, by the timing spread (standard deviation of a player's hits around
  * the note) they expect, as a share of the beat. Tapping studies put trained musicians at
- * about 2-3% of the beat and untrained people at 4-6%.
+ * about 2-3% of the beat and untrained people at 4% or more.
  */
 export const TOLERANCE_LEVELS = {
-  beginner: { label: 'Beginner', spread: 0.035, description: 'new to it' },
+  beginner: { label: 'Beginner', spread: 0.04, description: 'new to it' },
   intermediate: { label: 'Intermediate', spread: 0.025, description: 'a few years in' },
   advanced: { label: 'Advanced', spread: 0.02, description: 'gigging' },
   pro: { label: 'Pro', spread: 0.015, description: 'studio' },
@@ -27,7 +30,7 @@ export const TOLERANCE_LEVELS = {
  */
 export function toleranceWindows(level, bpm) {
   const beatMs = Math.min(MAX_BEAT_MS, Math.max(MIN_BEAT_MS, MS_PER_MINUTE / bpm));
-  const spreadMs = TOLERANCE_LEVELS[level].spread * beatMs;
+  const spreadMs = Math.max(MIN_SPREAD_MS, TOLERANCE_LEVELS[level].spread * beatMs);
   return {
     perfect: TIER_SPREADS.perfect * spreadMs,
     good: TIER_SPREADS.good * spreadMs,
