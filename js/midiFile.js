@@ -78,7 +78,9 @@ export function MIDI_build_midi_url_count_in_track(gu, timeSigTop, timeSigBottom
     gu.metronomeVelocityOverride !== undefined
       ? gu.metronomeVelocityOverride
       : constant_OUR_MIDI_VELOCITY_NORMAL;
-  midiTrack.addNoteOn(9, constant_OUR_MIDI_METRONOME_1, 0, countInVelocity);
+  // beats of silence before the clicks (the Drum Coach announces a tempo change in them)
+  var leadInBeats = gu.countInLeadInBeats !== undefined ? gu.countInLeadInBeats : 0;
+  midiTrack.addNoteOn(9, constant_OUR_MIDI_METRONOME_1, leadInBeats * noteDelay, countInVelocity);
   midiTrack.addNoteOff(9, constant_OUR_MIDI_METRONOME_1, noteDelay);
   for (var i = 1; i < timeSigTop; i++) {
     midiTrack.addNoteOn(9, constant_OUR_MIDI_METRONOME_NORMAL, 0, countInVelocity);

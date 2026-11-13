@@ -57,6 +57,8 @@ export class ScorePanel {
    * @param {import('../engine/PassScore.js').Score|null} view.goal.score - this pass so far
    * @param {number} view.goal.passesDone - passes in a row that met the goal
    * @param {number} view.goal.passesNeeded
+   * @param {{from: number, to: number}|null} view.tempoRaise - shown while the count-in for a
+   *   raised tempo plays, in place of the goal
    */
   update(view) {
     const offsets = {
@@ -69,8 +71,14 @@ export class ScorePanel {
         scoreHtml(view[which]) + offsets[which];
     }
     const goalEl = this.container.querySelector('.coach-score-goal');
-    goalEl.style.display = view.goal ? 'flex' : 'none';
-    if (view.goal) goalEl.innerHTML = goalHtml(view.goal);
+    goalEl.style.display = view.goal || view.tempoRaise ? 'flex' : 'none';
+    goalEl.classList.toggle('tempo-raise', !!view.tempoRaise);
+    if (view.tempoRaise) {
+      const { from, to } = view.tempoRaise;
+      goalEl.innerHTML = `<i class="fa fa-arrow-up"></i> Tempo up: ${from} \u2192 ${to} bpm`;
+    } else if (view.goal) {
+      goalEl.innerHTML = goalHtml(view.goal);
+    }
   }
 }
 

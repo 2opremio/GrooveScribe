@@ -1191,6 +1191,16 @@
   gap: 18px;
   flex-wrap: wrap;
 }
+.coach-score-goal.tempo-raise {
+  color: #fff;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.coach-score-goal.tempo-raise .fa {
+  color: var(--highlight-color);
+}
+
 .coach-score-next {
   color: #ccc;
 }
