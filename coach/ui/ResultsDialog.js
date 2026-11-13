@@ -19,6 +19,7 @@ export class ResultsDialog {
 
     const dialog = document.createElement('div');
     dialog.id = 'coachResultsDialog';
+    dialog.className = 'coach-sheet';
     dialog.innerHTML = `
       <h2 id="result-verdict"></h2>
       <div class="coach-results-grid">

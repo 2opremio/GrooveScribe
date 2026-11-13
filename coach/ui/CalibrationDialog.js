@@ -48,6 +48,7 @@ export class CalibrationDialog {
 
     const dialog = document.createElement('div');
     dialog.id = 'coachCalibrationDialog';
+    dialog.className = 'coach-sheet';
     dialog.innerHTML = `
             <h2>Latency Calibration</h2>
 
