@@ -110,7 +110,9 @@ export const ABC_PITCH_TO_DRUM_TYPE = {
   F: DrumType.KICK,
   '^d,': DrumType.HH_FOOT,
 
-  // Toms
+  // Toms: the coach grades two (high and low), so toms 1-2 count as high and 3-4 as low
   e: DrumType.TOM_HIGH,
+  d: DrumType.TOM_HIGH,
+  B: DrumType.TOM_LOW,
   A: DrumType.TOM_LOW,
 };
