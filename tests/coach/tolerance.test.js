@@ -11,10 +11,16 @@ const TEMPOS = [30, 40, 60, 71, 90, 120, 160, 240];
 
 describe('tolerance levels', () => {
   it('widen with the beat between 60 and 120 bpm', () => {
+    const at60 = toleranceWindows('intermediate', 60);
+    const at120 = toleranceWindows('intermediate', 120);
+    expect(at60.close).toBeCloseTo(2 * at120.close);
+  });
+
+  it('never ask for a blue hit tighter than the motor floor, at any level or tempo', () => {
     for (const level of LEVELS) {
-      const at60 = toleranceWindows(level, 60);
-      const at120 = toleranceWindows(level, 120);
-      expect(at60.close).toBeCloseTo(2 * at120.close);
+      for (const bpm of TEMPOS) {
+        expect(toleranceWindows(level, bpm).perfect).toBeGreaterThanOrEqual(10);
+      }
     }
   });
 
@@ -40,9 +46,10 @@ describe('tolerance levels', () => {
     }
   });
 
-  it('grade the same share of a beat the same at any tempo in range', () => {
+  it('grade the same share of a beat the same at any tempo in range, above the floor', () => {
+    // up to 90 bpm, where even Pro's spread is still above the floor
     for (const level of LEVELS) {
-      const tiers = [60, 71, 90, 120].map((bpm) => {
+      const tiers = [60, 71, 90].map((bpm) => {
         const beatMs = 60000 / bpm;
         const windows = toleranceWindows(level, bpm);
         return [0.01, 0.03, 0.05, 0.07, 0.12].map(
