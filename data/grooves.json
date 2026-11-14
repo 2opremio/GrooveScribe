@@ -44,6 +44,11 @@
         "name": "Smells Like Teen Spirit: chorus, open hi-hat",
         "groove": "?TimeSig=4/4&Div=16&Title=Teen%20Spirit%20chorus%20(open%20hi-hat)&Tempo=117&Measures=1&Repeats=4&H=|o---o---o---o---|&S=|----o--o-o--o---|&K=|o--o----o-oo--o-|",
         "createdAt": 1794681730520
+      },
+      "groove_1794681733507": {
+        "name": "Smells Like Teen Spirit: chorus, crash",
+        "groove": "?TimeSig=4/4&Div=16&Title=Teen%20Spirit%20chorus%20(crash)&Tempo=117&Measures=1&Repeats=4&H=|c---c---c---c---|&S=|----o--o-o--o---|&K=|o--o----o-oo--o-|",
+        "createdAt": 1794681733507
       }
     }
   }
