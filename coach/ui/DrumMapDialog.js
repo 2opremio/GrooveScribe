@@ -99,17 +99,15 @@ export class DrumMapDialog {
             <div class="drummap-cc-section">
                 <label class="drummap-cc-toggle">
                     <input type="checkbox" id="drummap-cc-enabled">
-                    Pedal CC
+                    Hi-hat pedal
                 </label>
                 <span class="drummap-cc-fields" id="drummap-cc-fields">
                     CC <input type="number" id="drummap-cc-num" min="0" max="127" value="4">
-                    Open &le; <input type="number" id="drummap-cc-open-up-to" min="0" max="127">
                     Closed &ge; <input type="number" id="drummap-cc-closed-from" min="0" max="127">
                 </span>
                 <span class="drummap-cc-live" id="drummap-cc-live">
                     <span class="drummap-cc-bar-track">
                         <span class="drummap-cc-bar-fill" id="drummap-cc-bar-fill"></span>
-                        <span class="drummap-cc-bar-threshold" id="drummap-cc-bar-open-up-to"></span>
                         <span class="drummap-cc-bar-threshold" id="drummap-cc-bar-closed-from"></span>
                     </span>
                     <span class="drummap-cc-value" id="drummap-cc-value">0</span>
@@ -143,7 +141,6 @@ export class DrumMapDialog {
     const ccEnabled = this.container.querySelector('#drummap-cc-enabled');
     const ccFields = this.container.querySelector('#drummap-cc-fields');
     const ccNum = this.container.querySelector('#drummap-cc-num');
-    const ccOpenUpTo = this.container.querySelector('#drummap-cc-open-up-to');
     const ccClosedFrom = this.container.querySelector('#drummap-cc-closed-from');
 
     ccEnabled.addEventListener('change', () => {
@@ -155,19 +152,16 @@ export class DrumMapDialog {
       this._editingHihatCC.cc = parseInt(ccNum.value) || 4;
       this._markCustomIfChanged();
     });
-    const bound = (input, key) =>
-      input.addEventListener('change', () => {
-        const value = parseInt(input.value);
-        if (Number.isNaN(value)) {
-          input.value = this._editingHihatCC[key];
-          return;
-        }
-        this._editingHihatCC[key] = value;
-        this._updateThresholdMarkers();
-        this._markCustomIfChanged();
-      });
-    bound(ccOpenUpTo, 'openUpTo');
-    bound(ccClosedFrom, 'closedFrom');
+    ccClosedFrom.addEventListener('change', () => {
+      const value = parseInt(ccClosedFrom.value);
+      if (Number.isNaN(value)) {
+        ccClosedFrom.value = this._editingHihatCC.closedFrom;
+        return;
+      }
+      this._editingHihatCC.closedFrom = value;
+      this._updateThresholdMarker();
+      this._markCustomIfChanged();
+    });
 
     // MIDI learn buttons
     this.container.querySelectorAll('.drummap-learn-btn').forEach((btn) => {
@@ -310,27 +304,22 @@ export class DrumMapDialog {
     const ccEnabled = this.container.querySelector('#drummap-cc-enabled');
     const ccFields = this.container.querySelector('#drummap-cc-fields');
     const ccNum = this.container.querySelector('#drummap-cc-num');
-    const ccOpenUpTo = this.container.querySelector('#drummap-cc-open-up-to');
     const ccClosedFrom = this.container.querySelector('#drummap-cc-closed-from');
     const ccLive = this.container.querySelector('#drummap-cc-live');
 
     ccEnabled.checked = this._editingHihatCC.enabled;
     ccNum.value = this._editingHihatCC.cc;
-    ccOpenUpTo.value = this._editingHihatCC.openUpTo;
     ccClosedFrom.value = this._editingHihatCC.closedFrom;
     ccFields.classList.toggle('drummap-cc-disabled', !this._editingHihatCC.enabled);
     ccLive.classList.toggle('drummap-cc-disabled', !this._editingHihatCC.enabled);
 
-    this._updateThresholdMarkers();
+    this._updateThresholdMarker();
     this._updateCCDisplay(0);
   }
 
-  _updateThresholdMarkers() {
-    for (const key of ['openUpTo', 'closedFrom']) {
-      const id = key === 'openUpTo' ? '#drummap-cc-bar-open-up-to' : '#drummap-cc-bar-closed-from';
-      const marker = this.container.querySelector(id);
-      marker.style.left = (this._editingHihatCC[key] / MAX_CC) * 100 + '%';
-    }
+  _updateThresholdMarker() {
+    const marker = this.container.querySelector('#drummap-cc-bar-closed-from');
+    marker.style.left = (this._editingHihatCC.closedFrom / MAX_CC) * 100 + '%';
   }
 
   _updateCCDisplay(value) {
@@ -342,7 +331,7 @@ export class DrumMapDialog {
     fill.style.width = pct + '%';
     valueEl.textContent = value;
 
-    // Color: green while a hit there counts as open, orange once it only counts as closed
+    // Color: green while a hit there counts as open, orange once it counts as closed
     const isClosed = hihatByPedal(value, this._editingHihatCC) === DrumType.HH_CLOSED;
     fill.classList.toggle('drummap-cc-closed', isClosed);
   }

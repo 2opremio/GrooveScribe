@@ -202,9 +202,6 @@ export class Engine {
     // and incoming MIDI drum hits should be in ModuleDrumTypes,
     // a simple equality check is sufficient for most drums.
     if (drum === noteType) return true;
-    if (drum === DrumType.HH_HALF_OPEN) {
-      return noteType === DrumType.HH_OPEN || noteType === DrumType.HH_CLOSED;
-    }
 
     // Special case: snare can match snare_flam as the grace note
     // but snare_flam itself (the primary hit) would have been normalized to 'snare'

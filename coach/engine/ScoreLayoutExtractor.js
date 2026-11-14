@@ -38,7 +38,6 @@ const NOTE_Y_OFFSETS = {
   [DrumType.RIDE_BELL]: -2, // ^B' → print=A'
   [DrumType.HH_CLOSED]: -1, // ^g  → print=g
   [DrumType.HH_OPEN]: -1,
-  [DrumType.HH_HALF_OPEN]: -1,
   [DrumType.HH_ACCENT]: -1,
   [DrumType.COWBELL]: -1, // ^D' → print=g
 
