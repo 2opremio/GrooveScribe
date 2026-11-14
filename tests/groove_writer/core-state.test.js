@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { newGrooveWriter, buildGridDOM } from '../helpers/loadGrooveWriter.js';
+import { fakeAudioContext } from '../helpers/legacyLoader.js';
 
 // Regression coverage for GrooveWriter's core state/undo-redo machinery:
 //   numberOfMeasures, notesPerMeasure, getMetronomeFrequency/setMetronomeFrequency,
@@ -473,7 +474,7 @@ describe('GrooveWriter metronomeAutoSpeedUpTempoUpdate', () => {
         playing: false,
         currentTime: 0,
         endTime: 0,
-        ctx: { resume: vi.fn() },
+        ctx: fakeAudioContext({ resume: vi.fn() }),
       },
       loadPlugin: vi.fn((opts) => {
         if (opts && opts.callback) opts.callback();

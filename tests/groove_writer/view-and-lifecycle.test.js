@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { newGrooveWriter, buildGridDOM } from '../helpers/loadGrooveWriter.js';
-import { installMidiGlobal } from '../helpers/legacyLoader.js';
+import { installMidiGlobal, fakeAudioContext } from '../helpers/legacyLoader.js';
 
 // Regression coverage for the view/edit-mode toggling and page-bootstrap layer
 // of js/groove_writer.js: swapViewEditMode, expandAuthoringViewWhenNecessary,
@@ -34,7 +34,7 @@ function makeMidiMock() {
       playing: false,
       currentTime: 0,
       endTime: 0,
-      ctx: { resume: vi.fn() },
+      ctx: fakeAudioContext({ resume: vi.fn() }),
     },
     loadPlugin: vi.fn((opts) => {
       if (opts && opts.callback) opts.callback();

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { newGrooveUtils, installMidiGlobal } from '../helpers/legacyLoader.js';
+import { newGrooveUtils, installMidiGlobal, fakeAudioContext } from '../helpers/legacyLoader.js';
 
 // layout of a loaded one-measure track that plays each measure once
 const ONE_MEASURE = { measures: 1, repeatsPerBar: 1 };
@@ -41,7 +41,7 @@ function makeMidiMock() {
       playing: false,
       currentTime: 0,
       endTime: 0,
-      ctx: { resume: vi.fn() },
+      ctx: fakeAudioContext({ resume: vi.fn() }),
     },
     loadPlugin: vi.fn((opts) => {
       if (opts && opts.callback) opts.callback();
