@@ -30,6 +30,11 @@
         "name": "Half-time cross-stick & kick comping 1: on 8ths, each bar x4",
         "groove": "?TimeSig=4/4&Div=16&Title=Half-time%20comping%201&Tempo=140&Measures=6&Repeats=4&H=|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|&S=|--------x-------|--------x-------|--------x-------|--------x-------|--------x-----x-|--------x-------|&K=|o---------------|o---------o-----|o-----o---------|o-----o---o---o-|o-----o---------|o---------------|",
         "createdAt": 1794664684075
+      },
+      "groove_1794664688599": {
+        "name": "Half-time cross-stick & kick comping 2: 16th off-beats and pairs, each bar x4",
+        "groove": "?TimeSig=4/4&Div=16&Title=Half-time%20comping%202&Tempo=100&Measures=6&Repeats=4&H=|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|x-x-x-x-x-x-x-x-|&S=|--------x------x|--------x--x----|--------x--x--x-|-------xx-------|--------x-----xx|-------xx------x|&K=|o---------o-----|o-----o---------|o--o--o---------|o---------o-----|o-----o---o-o---|o---------o-----|",
+        "createdAt": 1794664688599
       }
     },
     "Toms": {
