@@ -203,3 +203,38 @@ describe('Drum Coach flams and drags', () => {
     expect(play([1000])).toMatchObject({ perfect: 1, missed: 0, stray: 0 });
   });
 });
+
+describe('Drum Coach hi-hat foot', () => {
+  const kick = [{ time: 0, type: DrumType.KICK }];
+
+  function engineFor(target, gradesUnwrittenHihatFoot) {
+    const engine = new Engine({ latencyMs: () => 0, windows: WINDOWS, gradesUnwrittenHihatFoot });
+    engine.loadGroove({ target });
+    engine.start(performance.now() - 10);
+    return engine;
+  }
+
+  it('leaves out a foot keeping time in a groove with no hi-hat foot', () => {
+    const engine = engineFor(kick, () => false);
+    expect(engine.handleMidiHit(DrumType.HH_FOOT, engine.startTime)).toBeNull();
+    expect(engine.handleMidiHit(DrumType.KICK, engine.startTime).tier).toBe('perfect');
+    expect(engine.results.map((r) => r.tier)).toEqual(['perfect']);
+  });
+
+  it('counts the foot as a stray hit when asked to grade it in every groove', () => {
+    const engine = engineFor(kick, () => true);
+    expect(engine.handleMidiHit(DrumType.HH_FOOT, engine.startTime).tier).toBe('extra');
+  });
+
+  it('grades the foot in a groove that has hi-hat foot notes', () => {
+    const engine = engineFor(
+      [
+        { time: 0, type: DrumType.HH_FOOT },
+        { time: 500, type: DrumType.KICK },
+      ],
+      () => false
+    );
+    expect(engine.handleMidiHit(DrumType.HH_FOOT, engine.startTime).tier).toBe('perfect');
+    expect(engine.handleMidiHit(DrumType.HH_FOOT, engine.startTime + 250).tier).toBe('extra');
+  });
+});

@@ -35,7 +35,10 @@ export class Controller {
   constructor(grooveWriter) {
     this.grooveWriter = grooveWriter;
     this.audioClock = null; // created with the session: the player's AudioContext exists by then
-    this.engine = new Engine({ latencyMs: () => this._latencyMs() });
+    this.engine = new Engine({
+      latencyMs: () => this._latencyMs(),
+      gradesUnwrittenHihatFoot: () => coachState.gradeUnwrittenHihatFoot,
+    });
     this.abcMapper = new ABCIndexMapper();
     this.midiHandler = new MidiInputHandler({
       onHit: (drum, timestamp, velocity) => this.handleMidiHit(drum, timestamp, velocity),
