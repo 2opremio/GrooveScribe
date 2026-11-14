@@ -321,6 +321,9 @@ var startAudio = function (currentTime, fromCache, passContextTime, passData) {
 	var ctx = getContext();
 	var length = data.length;
 	var passStartSet = fromCache;
+	// a tune restarted when a looping pass ends starts on the bar line, where the pass queued
+	// ahead has already sounded whatever was due by now
+	var restartsOnBarLine = !fromCache && passBoundaryContextTime !== null;
 	var reachedEnd = true;
 	//
 	queuedTime = LEAD_IN_MS;
@@ -354,10 +357,12 @@ var startAudio = function (currentTime, fromCache, passContextTime, passData) {
 		var passBase = passContextTime === undefined ? passStartContextTime : passContextTime;
 		var eventContextTime = passBase + queuedTime / 1000;
 		var delayMs = (eventContextTime - ctx.currentTime) * 1000;
-		// a note whose time has passed (a late timer, a tune started on a bar line just behind us)
-		// plays now: the WebAudio plugin takes a time in the past as a delay from now, so passing
-		// it on would play the note that much later again
-		var audioTime = eventContextTime >= ctx.currentTime ? eventContextTime : 0;
+		// a note whose time has passed plays now (the WebAudio plugin takes a time in the past as a
+		// delay from now, so passing it on would play the note that much later again), unless the
+		// tune restarted on the bar line: the queued pass played that moment, so it isn't repeated
+		var due = eventContextTime < ctx.currentTime;
+		var sounds = !(due && restartsOnBarLine);
+		var audioTime = due ? 0 : eventContextTime;
 		var event = data[n][0].event;
 		if (event.type !== "channel") continue;
 		var channel = event.channel;
@@ -368,7 +373,7 @@ var startAudio = function (currentTime, fromCache, passContextTime, passData) {
 				eventQueue.push({
 					event: event,
 					contextTime: eventContextTime,
-					source: MIDI.noteOn(channel, event.noteNumber, event.velocity, audioTime),
+					source: sounds ? MIDI.noteOn(channel, event.noteNumber, event.velocity, audioTime) : undefined,
 					interval: scheduleTracking(channel, note, queuedTime, delayMs, 144, event.velocity)
 				});
 				messages ++;
@@ -378,7 +383,7 @@ var startAudio = function (currentTime, fromCache, passContextTime, passData) {
 				note = event.noteNumber - (root.MIDIOffset || 0);
 				eventQueue.push({
 					event: event,
-					source: MIDI.noteOff(channel, event.noteNumber, audioTime),
+					source: sounds ? MIDI.noteOff(channel, event.noteNumber, audioTime) : undefined,
 					interval: scheduleTracking(channel, note, queuedTime, delayMs, 128)
 				});
 				break;

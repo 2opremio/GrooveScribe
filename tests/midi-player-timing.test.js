@@ -164,21 +164,21 @@ describe('MIDI player timing', () => {
     }
   });
 
-  it('starts a tune reloaded at the end of a pass on the bar line', () => {
-    const { scheduled, reloadedPass, songLengthMs } = runPlayer({
-      passes: 3,
+  it('starts a tune reloaded at the end of a pass on the bar line, without repeating it', () => {
+    const passes = 3;
+    const { scheduled, songLengthMs } = runPlayer({
+      passes,
       reloadAfterFirstPass: true,
       endOfPassWorkMs: REBUILD_MS,
     });
-    const barLine = scheduled[0] + songLengthMs / 1000;
-    // the reload runs as late as its timer and the work before it: a note already due by then
-    // plays at once, the rest of the tune is on the grid from the bar line
-    expect(reloadedPass).toHaveLength(NOTES);
-    expect((reloadedPass[0] - barLine) * 1000).toBeLessThanOrEqual(
-      TIMER_LATENESS_MS + REBUILD_MS + 1e-6
-    );
-    reloadedPass.slice(1).forEach((time, i) => {
-      expect((time - barLine) * 1000).toBeCloseTo((i + 1) * NOTE_SPACING_MS, 6);
+    // the notes due before the reload played from the pass queued ahead, and the reloaded tune
+    // takes over from there: every note once, on one grid
+    expect(scheduled).toHaveLength(NOTES * passes);
+    scheduled.forEach((time, i) => {
+      expect((time - scheduled[0]) * 1000).toBeCloseTo(
+        Math.floor(i / NOTES) * songLengthMs + (i % NOTES) * NOTE_SPACING_MS,
+        6
+      );
     });
   });
 

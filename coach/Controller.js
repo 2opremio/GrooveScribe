@@ -28,9 +28,6 @@ import {
 // velocity given to hits simulated from the keyboard (k/s/h); a firm, non-accented hit
 const DEBUG_KEY_VELOCITY = 100;
 
-// silent beats before the count-in after a tempo raise, holding the chime that announces it
-const TEMPO_CHIME_LEAD_IN_BEATS = 1;
-
 /**
  * Controller - Orchestrates the entire Drum Coach feature
  */
@@ -211,16 +208,12 @@ export class Controller {
 
     // A new tempo takes effect by reloading the song when the pass ends; after a raise, the
     // count-in plays first (GrooveScribe loads it when told playback is starting).
-    // Its first beat is left silent for the chime that announces the raise.
     const originalLoadMidiData = utils.midiEventCallbacks.loadMidiDataEvent;
     utils.midiEventCallbacks.loadMidiDataEvent = (root, playStarting) => {
-      if (!(this.isCoachingActive && this.countInAfterTempoChange)) {
-        originalLoadMidiData(root, playStarting);
-        return;
-      }
-      utils.countInLeadInBeats = TEMPO_CHIME_LEAD_IN_BEATS;
-      originalLoadMidiData(root, true);
-      delete utils.countInLeadInBeats;
+      originalLoadMidiData(
+        root,
+        playStarting || (this.isCoachingActive && this.countInAfterTempoChange)
+      );
     };
 
     // A pause would freeze the song while the session's clock runs on, marking every note
@@ -315,12 +308,10 @@ export class Controller {
    * measure before the loop point and clears measure 0 before any rushing hits arrive.
    * Nothing is drawn until the pass starts.
    * @param {number} passContextTime - the audio time the count-in was scheduled from, in s
-   * @param {number} [leadInMs] - silence before the count-in's first click
    */
-  _timeCountIn(passContextTime, leadInMs = 0) {
+  _timeCountIn(passContextTime) {
     const lastMeasureStartMs = this.renderer.passDurationMs - this.renderer.measureDurationMs;
-    this.sessionStartTime =
-      this.audioClock.heardAt(passContextTime) + leadInMs - lastMeasureStartMs;
+    this.sessionStartTime = this.audioClock.heardAt(passContextTime) - lastMeasureStartMs;
     this.renderer._renderingEnabled = false;
     this.renderer.scheduleMeasureClearing(lastMeasureStartMs);
   }
@@ -349,10 +340,9 @@ export class Controller {
       this.countInPlaying = true;
       this.engine.stop();
       this._loadTimeline();
+      // the chime sounds with the count-in's first click, so the downbeat it marks is the real one
       playTempoChime(MIDI.Player.ctx, passContextTime, coachState.metronomeVolume);
-      const beatsPerMeasure = this.grooveWriter.grooveDataFromClickableUI().numBeats;
-      const beatMs = this.renderer.measureDurationMs / beatsPerMeasure;
-      this._timeCountIn(passContextTime, TEMPO_CHIME_LEAD_IN_BEATS * beatMs);
+      this._timeCountIn(passContextTime);
       this._refreshScorePanel();
       return;
     }
