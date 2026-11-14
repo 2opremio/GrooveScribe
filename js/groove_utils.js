@@ -109,6 +109,11 @@ var global_num_GrooveUtilsCreated = 0;
 // so import.meta.url is the module-safe equivalent of the old currentScript.src.
 var global_grooveUtilsScriptSrc = import.meta.url;
 var global_midiInitialized = false;
+// Resolves once the soundfont has loaded and MIDI.Player has its audio context.
+var global_resolveMidiReady;
+var global_midiReady = new Promise(function (resolve) {
+  global_resolveMidiReady = resolve;
+});
 
 // global constants
 
@@ -1210,9 +1215,14 @@ function GrooveUtils() {
         ) {
           MIDI.Player.unmuteController = unmute(MIDI.Player.ctx);
         }
+        global_resolveMidiReady();
         root.midiEventCallbacks.midiInitialized(root.midiEventCallbacks.classRoot);
       },
     });
+  };
+
+  root.midiReady = function () {
+    return global_midiReady;
   };
 
   root.getMidiStartTime = function () {
