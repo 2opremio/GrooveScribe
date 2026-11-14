@@ -113,6 +113,7 @@ export default [
       'js/groove_display.js',
       'js/main.js',
       'js/groove_storage.js',
+      'js/dragScroll.js',
     ],
     languageOptions: {
       sourceType: 'module',

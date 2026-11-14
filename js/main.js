@@ -10,6 +10,7 @@
 import { GrooveWriter } from './groove_writer.js';
 import { GrooveUtils } from './groove_utils.js';
 import { grooves } from './grooves.js';
+import { installDragScroll } from './dragScroll.js';
 
 // Inline HTML handlers (onclick="myGrooveWriter.…") and other consumers still
 // reference these as globals, so expose them on window.
@@ -78,6 +79,8 @@ fillContainer('grooveListWrapper', grooves.getGroovesAsHTML());
 // Saved user grooves are fetched from the server (server.js) and prepended to
 // the grooves menu once they arrive.
 myGrooveWriter.initGrooveStorage();
+
+installDragScroll();
 
 // Initialize the notes/player once the page has fully loaded (matches the
 // original window.onload handler).
