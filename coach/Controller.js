@@ -198,8 +198,9 @@ export class Controller {
     const originalRepeatCallback = utils.repeatCallback;
     const originalNotePlaying = utils.midiEventCallbacks.notePlaying;
 
-    // Both hooks read the audio time MIDI.js scheduled the pass's start at: a loop starts one
-    // song length after the previous pass, a restart (count-in end, new tempo) starts now.
+    // Both hooks read the audio time MIDI.js scheduled the pass's start at: every pass after the
+    // first, including the groove after a count-in and a new tempo, starts on the bar line one
+    // song length after the previous pass.
 
     // Intercept play event
     utils.midiEventCallbacks.playEvent = (root) => {

@@ -2824,26 +2824,33 @@ function GrooveWriter() {
     set_Default_notes(window.location.search);
 
     root.myGrooveUtils.midiEventCallbacks.loadMidiDataEvent = function (myroot, playStarting) {
-      var midiURL;
-
       if (playStarting && class_metronome_count_in_active) {
-        midiURL = root.myGrooveUtils.MIDI_build_midi_url_count_in_track(
-          class_num_beats_per_measure,
-          class_note_value_per_measure
+        root.myGrooveUtils.loadMIDIFromURL(
+          root.myGrooveUtils.MIDI_build_midi_url_count_in_track(
+            class_num_beats_per_measure,
+            class_note_value_per_measure
+          )
         );
-        root.myGrooveUtils.midiNoteHasChanged(); // this track is temporary
         class_metronome_count_in_is_playing = true;
+        // the groove is queued to follow the count-in, so its first notes land on the bar line
+        // after it; the OffsetClick rotation starts over for it
+        root.myGrooveUtils.resetMetronomeOptionsOffsetClickStartRotation();
+        root.myGrooveUtils.queueMIDIFromURLForNextPass(createMidiUrlFromClickableUI('our_MIDI'));
+        root.myGrooveUtils.midiResetNoteHasChanged();
       } else {
         if (class_metronome_count_in_is_playing) {
           // we saved the state above so that we could reset the Offset click start, otherwise it starts on the 'e'
           class_metronome_count_in_is_playing = false;
           root.myGrooveUtils.resetMetronomeOptionsOffsetClickStartRotation();
         }
-        midiURL = createMidiUrlFromClickableUI('our_MIDI');
+        root.myGrooveUtils.loadMIDIFromURL(createMidiUrlFromClickableUI('our_MIDI'));
         root.myGrooveUtils.midiResetNoteHasChanged();
       }
-      root.myGrooveUtils.loadMIDIFromURL(midiURL);
       root.updateGrooveDBSource();
+    };
+
+    root.myGrooveUtils.midiEventCallbacks.queuedMidiStarted = function () {
+      class_metronome_count_in_is_playing = false;
     };
 
     root.myGrooveUtils.midiEventCallbacks.notePlaying = function (
