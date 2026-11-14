@@ -55,3 +55,16 @@ export async function installMidiGlobal() {
   globalThis.Midi = Midi;
   return Midi;
 }
+
+/**
+ * A stand-in for MIDI.Player.ctx: what GrooveUtils builds in the context when MIDI loads (a
+ * silent node graph), plus any members a test needs.
+ * @param {object} members
+ */
+export function fakeAudioContext(members) {
+  return {
+    createConstantSource: () => ({ offset: { value: 0 }, connect() {}, start() {} }),
+    createAnalyser: () => ({}),
+    ...members,
+  };
+}

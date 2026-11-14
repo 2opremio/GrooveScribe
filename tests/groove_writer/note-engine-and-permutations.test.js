@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { newGrooveWriter, buildFullPageDOM } from '../helpers/loadGrooveWriter.js';
-import { installMidiGlobal } from '../helpers/legacyLoader.js';
+import { installMidiGlobal, fakeAudioContext } from '../helpers/legacyLoader.js';
 
 // A permissive MIDI.js stand-in sufficient for runsOnPageLoad / playback wiring.
 function makeMidiMock() {
@@ -17,7 +17,7 @@ function makeMidiMock() {
       addListener: vi.fn(),
       removeListener: vi.fn(),
       loadFile: vi.fn((url, cb) => cb && cb()),
-      ctx: { resume: vi.fn() },
+      ctx: fakeAudioContext({ resume: vi.fn() }),
     },
     loadPlugin: vi.fn((opts) => opts && opts.callback && opts.callback()),
     programChange: vi.fn(),

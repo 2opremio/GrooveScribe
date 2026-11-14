@@ -114,6 +114,17 @@ var global_midiReady = new Promise(function (resolve) {
   global_resolveMidiReady = resolve;
 });
 
+// Chromium swaps an audio context's output for a fake clock after 30 s of silence, and swapping
+// back when sound resumes makes the first notes after a pause uneven. A context whose graph holds
+// an analyser fed by a source, with nothing downstream of it (an "automatic pull node"), never
+// gets the fake clock: this keeps a silent one in the player's context.
+function keepAudioOutputRunning(ctx) {
+  var silence = ctx.createConstantSource();
+  silence.offset.value = 0;
+  silence.connect(ctx.createAnalyser());
+  silence.start();
+}
+
 // global constants
 
 // make these global so that they are shared among all the GrooveUtils classes invoked
@@ -1208,6 +1219,8 @@ function GrooveUtils() {
         ) {
           MIDI.Player.unmuteController = unmute(MIDI.Player.ctx);
         }
+        // the audio-tag fallback has no context
+        if (MIDI.Player.ctx) keepAudioOutputRunning(MIDI.Player.ctx);
         global_resolveMidiReady();
         root.midiEventCallbacks.midiInitialized(root.midiEventCallbacks.classRoot);
       },

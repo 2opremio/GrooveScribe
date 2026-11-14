@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { newGrooveUtils, installMidiGlobal } from '../helpers/legacyLoader.js';
+import { newGrooveUtils, installMidiGlobal, fakeAudioContext } from '../helpers/legacyLoader.js';
 
 // Regression coverage for the MIDI *playback control* layer in groove_utils.js
 // (as opposed to midi-generation.test.js, which covers MIDI *file encoding*).
@@ -38,7 +38,7 @@ function makeMidiMock() {
       playing: false,
       currentTime: 0,
       endTime: 0,
-      ctx: { resume: vi.fn() },
+      ctx: fakeAudioContext({ resume: vi.fn() }),
     },
     loadPlugin: vi.fn((opts) => {
       if (opts && opts.callback) opts.callback();
