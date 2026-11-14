@@ -102,13 +102,28 @@ root.setAnimation = function(config) {
 // helpers
 
 root.loadMidiFile = function() { // reads midi into javascript array of events
-	root.replayer = new Replayer(MidiFile(root.currentData), root.timeWarp);
-	root.data = root.replayer.getData();
-	root.endTime = getLength();
+	var tune = parseTune(root.currentData);
+	root.replayer = tune.replayer;
+	root.data = tune.data;
+	root.endTime = tune.endTime;
+};
+
+// Plays the tune in a base64 data URL as the next pass of a looping tune instead of repeating the
+// current one. It is queued ahead like any next pass, so it starts exactly on the bar line.
+// Loading a tune drops it.
+root.setNextTune = function (file) {
+	if (file.indexOf("base64,") === -1) {
+		throw new Error("MIDI.Player.setNextTune takes a base64 data URL");
+	}
+	if (nextPassStartContextTime !== null) {
+		throw new Error("MIDI.Player.setNextTune: the next pass is already queued");
+	}
+	nextTune = parseTune(window.atob(file.split(",")[1]));
 };
 
 root.loadFile = function (file, callback) {
 	root.stop();
+	nextTune = null;
 	if (file.indexOf("base64,") !== -1) {
 		var data = window.atob(file.split(",")[1]);
 		root.currentData = data;
@@ -160,11 +175,29 @@ var nextPassFullyQueued = false;
 // A tune (re)started from that callback starts there, on the bar line, however late the callback
 // runs; null otherwise.
 var passBoundaryContextTime = null;
+// The tune the next pass plays (see root.setNextTune); null when it repeats the current one.
+var nextTune = null;
+
+var parseTune = function (fileData) {
+	var replayer = new Replayer(MidiFile(fileData), root.timeWarp);
+	var data = replayer.getData();
+	return { currentData: fileData, replayer: replayer, data: data, endTime: getLength(data) };
+};
+
+// The next tune becomes the one being played.
+var startNextTune = function () {
+	root.currentData = nextTune.currentData;
+	root.replayer = nextTune.replayer;
+	root.data = nextTune.data;
+	root.endTime = nextTune.endTime;
+	nextTune = null;
+};
 
 // Queues the pass after the one starting at fromContextTime.
 var queueNextPass = function (fromContextTime) {
 	nextPassStartContextTime = fromContextTime + (root.endTime - LEAD_IN_MS) / 1000;
-	nextPassFullyQueued = startAudio(0, true, nextPassStartContextTime);
+	nextPassFullyQueued = startAudio(0, true, nextPassStartContextTime,
+		nextTune === null ? root.data : nextTune.data);
 };
 
 // Drops everything still queued: the notes, their timers, and any pass queued ahead.
@@ -207,7 +240,6 @@ var scheduleTracking = function (channel, note, currentTime, delayMs, message, v
 		if (switched) {
 			passStartContextTime = nextPassStartContextTime;
 			nextPassStartContextTime = null;
-			if (nextPassFullyQueued) queueNextPass(passStartContextTime);
 		}
 		// looping was turned on too late to queue the next pass ahead: it starts one song length
 		// after this one. The queue is empty once this event leaves it; it can already be empty,
@@ -217,6 +249,10 @@ var scheduleTracking = function (channel, note, currentTime, delayMs, message, v
 		if (loops) {
 			passStartContextTime += (root.endTime - LEAD_IN_MS) / 1000;
 		}
+		// the pass starting is the next tune's (set before its pass was queued ahead, if it was)
+		data.startsNextTune = (switched || loops) && nextTune !== null;
+		if (data.startsNextTune) startNextTune();
+		if (switched && nextPassFullyQueued) queueNextPass(passStartContextTime);
 		if (switched || loops) passBoundaryContextTime = passStartContextTime;
 		if (onMidiEvent) {
 			onMidiEvent(data);
@@ -256,8 +292,7 @@ var getContext = function() {
 	return root.ctx;
 };
 
-var getLength = function() {
-	var data =  root.data;
+var getLength = function(data) {
 	var length = data.length;
 	var totalTime = LEAD_IN_MS;
 	for (var n = 0; n < length; n++) {
@@ -268,20 +303,21 @@ var getLength = function() {
 
 // Queues the next batch of a pass (100 notes at most), from song time currentTime on; a fresh
 // start (not fromCache) begins a pass now. passContextTime, when given, is the start of a pass
-// queued ahead. Returns whether the batch reaches the end of the song.
-var startAudio = function (currentTime, fromCache, passContextTime) {
+// queued ahead, and passData that pass's song (the next tune's, or the current one's). Returns
+// whether the batch reaches the end of the song.
+var startAudio = function (currentTime, fromCache, passContextTime, passData) {
 	if (!root.replayer) return false;
 	if (!fromCache) {
 		if (typeof (currentTime) === "undefined") currentTime = root.restart;
 		if (root.playing) stopAudio();
 		root.playing = true;
 		root.data = root.replayer.getData();
-		root.endTime = getLength();
+		root.endTime = getLength(root.data);
 	}
 	var note;
 	var offset = 0;
 	var messages = 0;
-	var data = root.data;	
+	var data = passData === undefined ? root.data : passData;
 	var ctx = getContext();
 	var length = data.length;
 	var passStartSet = fromCache;
@@ -331,6 +367,7 @@ var startAudio = function (currentTime, fromCache, passContextTime) {
 				note = event.noteNumber - (root.MIDIOffset || 0);
 				eventQueue.push({
 					event: event,
+					contextTime: eventContextTime,
 					source: MIDI.noteOn(channel, event.noteNumber, event.velocity, audioTime),
 					interval: scheduleTracking(channel, note, queuedTime, delayMs, 144, event.velocity)
 				});
@@ -368,7 +405,8 @@ var stopAudio = function () {
 		if (!o.source) continue; // is not webaudio
 		if (typeof(o.source) === "number") {
 			window.clearTimeout(o.source);
-		} else { // webaudio
+		} else if (passBoundaryContextTime === null || o.contextTime > ctx.currentTime) { // webaudio
+			// a tune restarted on the bar line lets a note already sounding there ring out
 			o.source.disconnect(0);
 		}
 	}
