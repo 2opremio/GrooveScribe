@@ -27,6 +27,7 @@ const DEFAULTS = {
   startWithSolo: true,
   calibrationHitRule: 'loudest',
   minHitVelocity: 0, // 0 = no hit is ignored for being soft
+  gradeUnwrittenHihatFoot: false, // hi-hat foot hits count in grooves that have no hi-hat foot
   autoBpm: false, // in practice mode, raise the tempo after passes that meet the goal
   autoBpmPasses: 1, // passes in a row that must meet the goal before the tempo rises
   autoBpmStep: 5, // bpm the tempo rises by each time
@@ -266,6 +267,14 @@ export class StateManager {
 
   set startWithSolo(value) {
     this._data.startWithSolo = Boolean(value);
+  }
+
+  get gradeUnwrittenHihatFoot() {
+    return this._data.gradeUnwrittenHihatFoot;
+  }
+
+  set gradeUnwrittenHihatFoot(value) {
+    this._data.gradeUnwrittenHihatFoot = Boolean(value);
   }
 
   // DrumMapPreset property — file path relative to modulemappings/ or 'custom'

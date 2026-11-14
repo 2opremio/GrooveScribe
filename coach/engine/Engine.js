@@ -22,6 +22,9 @@ export class Engine {
     this.latencyMs = options.latencyMs;
     this.windows = options.windows || { perfect: 20, good: 35, close: 50 };
     this.onHitEvaluated = options.onHitEvaluated || (() => {});
+    // () => whether hi-hat foot hits are graded in a groove that has no hi-hat foot notes; many
+    // players keep time with the foot, so by default those hits are left out
+    this.gradesUnwrittenHihatFoot = options.gradesUnwrittenHihatFoot ?? (() => false);
 
     this.startTime = 0;
     this.isPlaying = false;
@@ -47,6 +50,7 @@ export class Engine {
         matched: false,
       };
     });
+    this.hasHihatFoot = this.noteTimeline.some((note) => note.type === DrumType.HH_FOOT);
     this.results = [];
   }
 
@@ -263,6 +267,9 @@ export class Engine {
    */
   handleMidiHit(drum, timestamp) {
     if (!this.isPlaying) return null;
+    if (drum === DrumType.HH_FOOT && !this.hasHihatFoot && !this.gradesUnwrittenHihatFoot()) {
+      return null;
+    }
     const tl = this.noteTimeline;
     const latency = this.latencyMs();
 

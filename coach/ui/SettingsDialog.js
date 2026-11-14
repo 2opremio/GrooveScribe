@@ -74,6 +74,7 @@ export class SettingsDialog {
             </div>
             <div class="coach-settings-advanced">
               ${row('Ignore hits below', 'velocity; filters pad crosstalk', number('coach-min-velocity-input', '', 'min="0" max="127" step="1"'), 'coach-min-velocity-input')}
+              ${row('Grade hi-hat foot', 'also in grooves without it', switchInput('coach-grade-hh-foot-check'), 'coach-grade-hh-foot-check')}
             </div>
           </section>
 
@@ -164,6 +165,7 @@ export class SettingsDialog {
     q('#coach-min-velocity-input').value = coachState.minHitVelocity;
     q('#coach-debug-grid-check').checked = coachState.showDebugGrid;
     q('#coach-start-solo-check').checked = coachState.startWithSolo;
+    q('#coach-grade-hh-foot-check').checked = coachState.gradeUnwrittenHihatFoot;
     q('#coach-metronome-vol').value = coachState.metronomeVolume;
 
     q('#coach-auto-bpm-check').checked = coachState.autoBpm;
@@ -246,6 +248,7 @@ export class SettingsDialog {
     coachState.minHitVelocity = q('#coach-min-velocity-input').value;
     coachState.showDebugGrid = q('#coach-debug-grid-check').checked;
     coachState.startWithSolo = q('#coach-start-solo-check').checked;
+    coachState.gradeUnwrittenHihatFoot = q('#coach-grade-hh-foot-check').checked;
     coachState.metronomeVolume = parseInt(q('#coach-metronome-vol').value);
     coachState.autoBpm = q('#coach-auto-bpm-check').checked;
     coachState.autoBpmStep = q('#coach-auto-bpm-step-input').value;
