@@ -360,6 +360,8 @@ export class Controller {
       const beatMs = this.renderer.measureDurationMs / beatsPerMeasure;
       this._timeCountIn(passContextTime, TEMPO_CHIME_LEAD_IN_BEATS * beatMs);
       this._refreshScorePanel();
+      // back to the first line as the chime plays, as at the session's first count-in
+      this._scrollToLine(document.getElementById('sheetMusicDiv'));
       return;
     }
     // the count-in ending starts the first pass; it isn't a repetition of the groove
