@@ -1891,13 +1891,14 @@ function GrooveWriter() {
       // query the clickable UI and generate a arrays representing the notes of all measures
       for (i = 0; i < total_notes; i++) {
         // only grab the stickings if they are visible
-        if (isStickingsVisible()) myGrooveData.sticking_array.push(get_sticking_state(i, 'ABC'));
+        if (myGrooveData.showStickings)
+          myGrooveData.sticking_array.push(get_sticking_state(i, 'ABC'));
 
         myGrooveData.hh_array.push(get_hh_state(i, 'ABC'));
         myGrooveData.snare_array.push(get_snare_state(i, 'ABC'));
         myGrooveData.kick_array.push(get_kick_state(i, 'ABC'));
 
-        if (isTomsVisible()) {
+        if (myGrooveData.showToms) {
           myGrooveData.toms_array[0].push(get_tom_state(i, 1, 'ABC'));
           myGrooveData.toms_array[3].push(get_tom_state(i, 4, 'ABC'));
         } else {
