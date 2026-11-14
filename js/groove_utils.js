@@ -162,6 +162,8 @@ function GrooveUtils() {
   root.repeatsPerBar = 1; // how many times each measure plays before the next one
   // measures of the loaded MIDI track, as shown in the notation, and how many times each plays
   var loadedMidiLayout = { measures: 1, repeatsPerBar: 1 };
+  // the layout of the tune queued to play next (see queueMIDIFromURLForNextPass)
+  var queuedMidiLayout = null;
   root.grooveUtilsUniqueIndex = global_num_GrooveUtilsCreated;
 
   // metronome options
@@ -1014,6 +1016,7 @@ function GrooveUtils() {
     };
     this.percentProgress = function (root, percent) {};
     this.notePlaying = function (root, note_type, note_position) {};
+    this.queuedMidiStarted = function (root) {};
 
     this.midiInitialized = function (root) {
       var icon = document.getElementById('midiPlayImage' + root.grooveUtilsUniqueIndex);
@@ -1103,6 +1106,17 @@ function GrooveUtils() {
     MIDI.Player.timeWarp = 1; // speed the song is played back
     MIDI.Player.BPM = root.getTempo();
     MIDI.Player.loadFile(midiURL, midiLoaderCallback());
+  };
+
+  /**
+   * Play a MIDI track as the next pass of the loaded one, queued ahead so its first notes are on
+   * the bar line. queuedMidiStarted is called when it starts.
+   * @param {string} midiURL  a base64 data URL
+   * @param {{measures: number, repeatsPerBar: number}} layout  as for loadMIDIFromURL
+   */
+  root.queueMIDIFromURLForNextPass = function (midiURL, layout) {
+    MIDI.Player.setNextTune(midiURL);
+    queuedMidiLayout = layout;
   };
 
   root.MIDISaveAs = function (midiURL) {
@@ -1312,13 +1326,20 @@ function GrooveUtils() {
       // at the end of a song
       root.midiEventCallbacks.notePlaying(root.midiEventCallbacks.classRoot, 'complete', 1);
 
+      if (data.startsNextTune) {
+        loadedMidiLayout = queuedMidiLayout;
+        queuedMidiLayout = null;
+        root.midiEventCallbacks.queuedMidiStarted(root.midiEventCallbacks.classRoot);
+      }
+
       if (root.shouldMIDIRepeat) {
         global_total_midi_repeats++;
 
         // regenerate the MIDI if the data needs refreshing or the OffsetClick is rotating every time
-        // advanceMetronomeOptionsOffsetClickStartRotation will return false if not rotating
+        // advanceMetronomeOptionsOffsetClickStartRotation will return false if not rotating.
+        // A queued tune that just started was built for this pass, rotation included.
         if (
-          root.advanceMetronomeOptionsOffsetClickStartRotation() ||
+          (!data.startsNextTune && root.advanceMetronomeOptionsOffsetClickStartRotation()) ||
           root.midiEventCallbacks.doesMidiDataNeedRefresh(root.midiEventCallbacks.classRoot)
         ) {
           MIDI.Player.stop();

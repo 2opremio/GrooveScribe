@@ -16,7 +16,12 @@ const NOTES = 250;
  * Runs MIDI.js's player on a simulated clock whose timers all fire late, and records the audio
  * audio time of every note that plays (a note queued and then cancelled doesn't).
  */
-function runPlayer({ passes, reloadAfterFirstPass = false, endOfPassWorkMs = 0 }) {
+function runPlayer({
+  passes,
+  reloadAfterFirstPass = false,
+  endOfPassWorkMs = 0,
+  countInNotes = 0,
+}) {
   let nowMs = 0;
   let timers = [];
   let nextId = 1;
@@ -31,6 +36,7 @@ function runPlayer({ passes, reloadAfterFirstPass = false, endOfPassWorkMs = 0 }
     },
     clearTimeout: cancel,
     clearInterval: cancel,
+    atob: (text) => text,
   };
   const sources = [];
   let reloaded = false;
@@ -57,27 +63,27 @@ function runPlayer({ passes, reloadAfterFirstPass = false, endOfPassWorkMs = 0 }
       return { disconnect() {} };
     },
   };
-  new Function('MIDI', 'window', PLAYER_SRC)(MIDI, fakeWindow);
+  // a "MIDI file" here is the name of one of these songs
+  const songs = { song: song(NOTES), countIn: song(countInNotes) };
+  const MidiFile = (name) => songs[name];
+  function Replayer(songData) {
+    this.getData = () => songData;
+  }
+  new Function('MIDI', 'window', 'MidiFile', 'Replayer', PLAYER_SRC)(
+    MIDI,
+    fakeWindow,
+    MidiFile,
+    Replayer
+  );
   const player = MIDI.Player;
   player.ctx = {
     get currentTime() {
       return nowMs / 1000;
     },
   };
-  const data = [];
-  for (let i = 0; i < NOTES; i++) {
-    const delta = i === 0 ? 0 : NOTE_SPACING_MS;
-    data.push([
-      { event: { type: 'channel', channel: 0, subtype: 'noteOn', noteNumber: 36, velocity: 100 } },
-      delta,
-    ]);
-  }
-  // like GrooveScribe's songs, the song ends with the last note's note-off, a step after it
-  data.push([
-    { event: { type: 'channel', channel: 0, subtype: 'noteOff', noteNumber: 36 } },
-    NOTE_SPACING_MS,
-  ]);
-  player.replayer = { getData: () => data };
+  // as GrooveScribe does for a count-in: it plays first, and the song is queued to follow it
+  player.replayer = new Replayer(countInNotes ? songs.countIn : songs.song);
+  if (countInNotes) player.setNextTune('data:audio/midi;base64,song');
   let passesStarted = 1;
   player.addListener((event) => {
     // the end of a pass: the song's closing note-off
@@ -112,12 +118,30 @@ function runPlayer({ passes, reloadAfterFirstPass = false, endOfPassWorkMs = 0 }
     .sort((a, b) => a - b)
     .slice(0, NOTES * passes);
   const maxLateMs = Math.max(...played.map((s) => s.lateMs));
+  const all = played.map((s) => s.time).sort((a, b) => a - b);
   const reloadedPass = played
     .filter((s) => s.fromReload)
     .map((s) => s.time)
     .sort((a, b) => a - b)
     .slice(0, NOTES);
-  return { scheduled, reloadedPass, songLengthMs, nowMs, maxLateMs };
+  return { scheduled, all, reloadedPass, songLengthMs, nowMs, maxLateMs };
+}
+
+function song(notes) {
+  const data = [];
+  for (let i = 0; i < notes; i++) {
+    const delta = i === 0 ? 0 : NOTE_SPACING_MS;
+    data.push([
+      { event: { type: 'channel', channel: 0, subtype: 'noteOn', noteNumber: 36, velocity: 100 } },
+      delta,
+    ]);
+  }
+  // like GrooveScribe's songs, the song ends with the last note's note-off, a step after it
+  data.push([
+    { event: { type: 'channel', channel: 0, subtype: 'noteOff', noteNumber: 36 } },
+    NOTE_SPACING_MS,
+  ]);
+  return data;
 }
 
 describe('MIDI player timing', () => {
@@ -156,6 +180,22 @@ describe('MIDI player timing', () => {
     reloadedPass.slice(1).forEach((time, i) => {
       expect((time - barLine) * 1000).toBeCloseTo((i + 1) * NOTE_SPACING_MS, 6);
     });
+  });
+
+  it('plays a song queued to follow a count-in from the bar line after it, on the grid', () => {
+    const countInNotes = 4;
+    const { all, maxLateMs } = runPlayer({
+      passes: 3,
+      countInNotes,
+      endOfPassWorkMs: REBUILD_MS,
+    });
+    // the count-in, then the song twice, every note on one grid with no gap or overlap
+    const expected = countInNotes + 2 * NOTES;
+    expect(all.slice(0, expected)).toHaveLength(expected);
+    all.slice(0, expected).forEach((time, i) => {
+      expect((time - all[0]) * 1000).toBeCloseTo(i * NOTE_SPACING_MS, 6);
+    });
+    expect(maxLateMs).toBe(0);
   });
 
   it('queues the next pass before the end-of-pass work, so its first notes are on time', () => {
