@@ -1,16 +1,12 @@
 import { DEFAULT_HIHAT_CC, DrumType, ModuleDrumTypes } from './DrumConstants.js';
 
 /**
- * The hi-hat a hit was, by the pedal's CC value: open, closed, or, where the open and closed
- * ranges overlap, half open (it takes either note).
+ * The hi-hat a hit was, by the pedal's CC value: closed at hihatCC.closedFrom or above, open below.
  * @param {number} pedal - CC value, 0 = fully open, 127 = fully closed
- * @param {{ closedFrom: number, openUpTo: number }} hihatCC
+ * @param {{ closedFrom: number }} hihatCC
  */
 export function hihatByPedal(pedal, hihatCC) {
-  const closed = pedal >= hihatCC.closedFrom;
-  const open = pedal <= hihatCC.openUpTo;
-  if (closed && open) return DrumType.HH_HALF_OPEN;
-  return closed ? DrumType.HH_CLOSED : DrumType.HH_OPEN;
+  return pedal >= hihatCC.closedFrom ? DrumType.HH_CLOSED : DrumType.HH_OPEN;
 }
 
 /**

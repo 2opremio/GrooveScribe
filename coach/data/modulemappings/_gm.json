@@ -1,6 +1,6 @@
 {
   "label": "General MIDI",
-  "hihatCC": { "enabled": true, "cc": 4, "closedFrom": 60, "openUpTo": 80 },
+  "hihatCC": { "enabled": true, "cc": 4, "closedFrom": 76 },
   "map": {
     "kick": [36, 35],
     "snare": [38, 40],
