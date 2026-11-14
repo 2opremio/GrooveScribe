@@ -7,6 +7,8 @@ const PLAYER_SRC = fs.readFileSync(path.resolve(__dirname, '../MIDI.js/js/MIDI/P
 // every timer fires this late, as browser timers do under load
 const TIMER_LATENESS_MS = 7;
 const NOTE_SPACING_MS = 100;
+// how long GrooveScribe takes to rebuild a tune's MIDI when a pass ends
+const REBUILD_MS = 20;
 // more notes than the player queues at once (100), so a pass spans several batches
 const NOTES = 250;
 
@@ -31,16 +33,21 @@ function runPlayer({ passes, reloadAfterFirstPass = false, endOfPassWorkMs = 0 }
     clearInterval: cancel,
   };
   const sources = [];
+  let reloaded = false;
   const MIDI = {
     lang: 'WebAudioAPI',
     channels: [{ mute: false }],
     noteOn(channel, note, velocity, time) {
+      // like the WebAudio plugin, a time in the past is taken as relative to now
+      if (time < nowMs / 1000) time += nowMs / 1000;
       const source = {
         time,
+        fromReload: reloaded,
         lateMs: Math.max(0, nowMs - time * 1000),
         cancelled: false,
+        // cancelling a note that has already played doesn't unplay it
         disconnect() {
-          this.cancelled = true;
+          if (nowMs < this.time * 1000) this.cancelled = true;
         },
       };
       sources.push(source);
@@ -80,6 +87,7 @@ function runPlayer({ passes, reloadAfterFirstPass = false, endOfPassWorkMs = 0 }
     nowMs += endOfPassWorkMs;
     // as GrooveScribe does when the next pass needs new MIDI (count-in over, tempo changed)
     if (reloadAfterFirstPass && passesStarted === 2) {
+      reloaded = true;
       player.stop();
       player.loop(true);
       player.start();
@@ -96,10 +104,20 @@ function runPlayer({ passes, reloadAfterFirstPass = false, endOfPassWorkMs = 0 }
     nowMs = timer.at;
     timer.fn();
   }
+  // the pass queued ahead after the last one is cancelled when looping stops, but by then a late
+  // callback has let its first note play: only the passes asked for are looked at
   const played = sources.filter((s) => !s.cancelled);
-  const scheduled = played.map((s) => s.time).sort((a, b) => a - b);
+  const scheduled = played
+    .map((s) => s.time)
+    .sort((a, b) => a - b)
+    .slice(0, NOTES * passes);
   const maxLateMs = Math.max(...played.map((s) => s.lateMs));
-  return { scheduled, songLengthMs, nowMs, maxLateMs };
+  const reloadedPass = played
+    .filter((s) => s.fromReload)
+    .map((s) => s.time)
+    .sort((a, b) => a - b)
+    .slice(0, NOTES);
+  return { scheduled, reloadedPass, songLengthMs, nowMs, maxLateMs };
 }
 
 describe('MIDI player timing', () => {
@@ -122,13 +140,22 @@ describe('MIDI player timing', () => {
     }
   });
 
-  it('keeps looping after the tune is reloaded at the end of a pass', () => {
-    const passes = 3;
-    const { scheduled, songLengthMs } = runPlayer({ passes, reloadAfterFirstPass: true });
-    expect(scheduled).toHaveLength(NOTES * passes);
-    // the reload starts its pass from the moment it happens; the loop after it is exact
-    const gapMs = (scheduled[2 * NOTES] - scheduled[NOTES]) * 1000;
-    expect(gapMs).toBeCloseTo(songLengthMs, 6);
+  it('starts a tune reloaded at the end of a pass on the bar line', () => {
+    const { scheduled, reloadedPass, songLengthMs } = runPlayer({
+      passes: 3,
+      reloadAfterFirstPass: true,
+      endOfPassWorkMs: REBUILD_MS,
+    });
+    const barLine = scheduled[0] + songLengthMs / 1000;
+    // the reload runs as late as its timer and the work before it: a note already due by then
+    // plays at once, the rest of the tune is on the grid from the bar line
+    expect(reloadedPass).toHaveLength(NOTES);
+    expect((reloadedPass[0] - barLine) * 1000).toBeLessThanOrEqual(
+      TIMER_LATENESS_MS + REBUILD_MS + 1e-6
+    );
+    reloadedPass.slice(1).forEach((time, i) => {
+      expect((time - barLine) * 1000).toBeCloseTo((i + 1) * NOTE_SPACING_MS, 6);
+    });
   });
 
   it('queues the next pass before the end-of-pass work, so its first notes are on time', () => {
