@@ -38,6 +38,13 @@
         "groove": "?TimeSig=4/4&Div=16&Title=Tom%20opening%20matrix&Tempo=60&Measures=8&Repeats=4&H=|----------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|&S=|-ooo-ooo-ooo-ooo|o-ooo-ooo-ooo-oo|oo-ooo-ooo-ooo-o|ooo-ooo-ooo-ooo-|--oo--oo--oo--oo|o--oo--oo--oo--o|oo--oo--oo--oo--|-oo--oo--oo--oo-|&K=|----------------|----------------|----------------|----------------|----------------|----------------|----------------|----------------|&T1=|----------------|-o---o---o---o--|----------------|---o---o---o---o|-o---o---o---o--|-o---o---o---o--|---o---o---o---o|---o---o---o---o|&T4=|o---o---o---o---|----------------|--o---o---o---o-|----------------|o---o---o---o---|--o---o---o---o-|--o---o---o---o-|o---o---o---o---|&Stickings=|RLRLRLRLRLRLRLRL|RLRLRLRLRLRLRLRL|RLRLRLRLRLRLRLRL|RLRLRLRLRLRLRLRL|RLRLRLRLRLRLRLRL|RLRLRLRLRLRLRLRL|RLRLRLRLRLRLRLRL|RLRLRLRLRLRLRLRL|",
         "createdAt": 1794657972248
       }
+    },
+    "Songs": {
+      "groove_1794681730520": {
+        "name": "Smells Like Teen Spirit: chorus, open hi-hat",
+        "groove": "?TimeSig=4/4&Div=16&Title=Teen%20Spirit%20chorus%20(open%20hi-hat)&Tempo=117&Measures=1&Repeats=4&H=|o---o---o---o---|&S=|----o--o-o--o---|&K=|o--o----o-oo--o-|",
+        "createdAt": 1794681730520
+      }
     }
   }
 }
