@@ -553,8 +553,10 @@ export class Controller {
    */
   async startSession({ autoPlay = true } = {}) {
     try {
-      // 0. Connect MIDI on first session (lazy initialization)
+      // 0. Connect MIDI on first session (lazy initialization), and wait for the soundfont:
+      // a session opened from a coach link starts while it is still loading
       await this._ensureMidiConnected();
+      await this.grooveWriter.myGrooveUtils.midiReady();
 
       // 1-2. Setup engine with the groove's notes and the level's windows at its tempo
       this._loadEngineTimeline();
