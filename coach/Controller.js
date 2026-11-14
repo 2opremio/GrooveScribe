@@ -10,7 +10,7 @@ import { ResultsDialog } from './ui/ResultsDialog.js';
 import { CalibrationDialog } from './ui/CalibrationDialog.js';
 import { coachState } from './state/State.js';
 import { toleranceWindows } from './engine/TimingEvaluator.js';
-import { DrumType } from './engine/DrumConstants.js';
+import { DEFAULT_HIHAT_CC, DrumType } from './engine/DrumConstants.js';
 import { scoreLayoutExtractor } from './engine/ScoreLayoutExtractor.js';
 import { loadDrumMapPresets, getPresetMap, getPresetHihatCC } from './data/DrumMapLoader.js';
 import { drumMapToRuntime, encodeDrumMap } from './data/DrumMapUtils.js';
@@ -808,7 +808,8 @@ export class Controller {
       const matchedNote = this.engine.noteTimeline.find(
         (n) => n.originalIndex === evaluation.noteIndex
       );
-      const abcIndex = matchedNote ? this.abcMapper.getIndex(matchedNote.tickIndex, drum) : null;
+      // the note's own drum: a half-open hi-hat hit takes an open or a closed note
+      const abcIndex = this.abcMapper.getIndex(matchedNote.tickIndex, matchedNote.type);
 
       // Draw feedback at pre-calculated sniffed coordinate.
       // Use the note's expected time (not hitTimeMs) for coordinate lookup,
@@ -818,7 +819,7 @@ export class Controller {
         matchedNote.time,
         evaluation.tier,
         evaluation.timingError,
-        drum,
+        matchedNote.type,
         abcIndex >= 0 ? abcIndex : null
       );
     } else {
@@ -835,7 +836,7 @@ export class Controller {
     const note = this.engine.noteTimeline.find(
       (n) => n.originalIndex === evaluation.nearestNoteIndex
     );
-    const abcIndex = this.abcMapper.getIndex(note.tickIndex, drum);
+    const abcIndex = this.abcMapper.getIndex(note.tickIndex, note.type);
     return {
       timeMs: note.time,
       timingError: evaluation.timingError,
@@ -1012,14 +1013,14 @@ export class Controller {
     let hihatCC;
     if (coachState.drumMapPreset === 'custom' && coachState.drumMapCustom) {
       editingMap = coachState.drumMapCustom;
-      hihatCC = coachState.drumMapCustomHihatCC || { enabled: false, cc: 4, threshold: 64 };
+      hihatCC = coachState.drumMapCustomHihatCC || { ...DEFAULT_HIHAT_CC };
     } else {
       editingMap = getPresetMap(this.drumMapPresetsById, coachState.drumMapPreset);
       hihatCC = getPresetHihatCC(this.drumMapPresetsById, coachState.drumMapPreset);
       if (!editingMap) {
         // Fallback to GM
         editingMap = getPresetMap(this.drumMapPresetsById, '_gm');
-        hihatCC = { enabled: false, cc: 4, threshold: 64 };
+        hihatCC = getPresetHihatCC(this.drumMapPresetsById, '_gm');
       }
     }
     if (editingMap) {

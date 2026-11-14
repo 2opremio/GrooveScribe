@@ -1,4 +1,4 @@
-import { ModuleDrumTypes } from '../engine/DrumConstants.js';
+import { DEFAULT_HIHAT_CC, ModuleDrumTypes } from '../engine/DrumConstants.js';
 
 const MAPPINGS_BASE_PATH = 'coach/data/modulemappings';
 
@@ -125,8 +125,6 @@ function resolveMap(entry, byId) {
   }
   return resolved;
 }
-
-const DEFAULT_HIHAT_CC = { enabled: false, cc: 4, threshold: 64 };
 
 /**
  * Resolves hihatCC config through the inheritance chain.

@@ -311,7 +311,12 @@ export class StateManager {
   }
 
   set drumMapCustomHihatCC(value) {
-    if (value !== null && typeof value !== 'object') {
+    const valid =
+      value === null ||
+      (typeof value === 'object' &&
+        typeof value.enabled === 'boolean' &&
+        [value.cc, value.closedFrom, value.openUpTo].every(Number.isInteger));
+    if (!valid) {
       console.warn(`[State] Invalid drumMapCustomHihatCC, keeping current value`);
       return;
     }

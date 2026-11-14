@@ -1,4 +1,17 @@
-import { ModuleDrumTypes } from './DrumConstants.js';
+import { DEFAULT_HIHAT_CC, DrumType, ModuleDrumTypes } from './DrumConstants.js';
+
+/**
+ * The hi-hat a hit was, by the pedal's CC value: open, closed, or, where the open and closed
+ * ranges overlap, half open (it takes either note).
+ * @param {number} pedal - CC value, 0 = fully open, 127 = fully closed
+ * @param {{ closedFrom: number, openUpTo: number }} hihatCC
+ */
+export function hihatByPedal(pedal, hihatCC) {
+  const closed = pedal >= hihatCC.closedFrom;
+  const open = pedal <= hihatCC.openUpTo;
+  if (closed && open) return DrumType.HH_HALF_OPEN;
+  return closed ? DrumType.HH_CLOSED : DrumType.HH_OPEN;
+}
 
 /**
  * MidiInputHandler - Wraps Web MIDI API
@@ -11,9 +24,10 @@ export class MidiInputHandler {
     this.onUntimedInput = options.onUntimedInput || (() => {});
     this._untimedInputs = new Set();
     this.drumMap = options.drumMap || {};
-    // Hi-hat CC config: { enabled, cc, threshold }
-    this.hihatCC = options.hihatCC || { enabled: false, cc: 4, threshold: 64 };
-    this._lastHiHatCC = 0; // 0 = fully open, 127 = fully closed
+    // Hi-hat pedal config, see DEFAULT_HIHAT_CC
+    this.hihatCC = options.hihatCC || { ...DEFAULT_HIHAT_CC };
+    // the pedal's last CC value, 0 = fully open, 127 = fully closed; null until the kit sends one
+    this._lastHiHatCC = null;
   }
 
   async connect() {
@@ -63,14 +77,11 @@ export class MidiInputHandler {
     if (isNoteOn) {
       let drum = this.drumMap[data1];
       if (drum && ModuleDrumTypes.includes(drum)) {
-        // CC-based hi-hat resolution: if a note maps to hh_open but
-        // the pedal CC says closed, report as hh_closed instead
-        if (
-          this.hihatCC.enabled &&
-          drum === 'hh_open' &&
-          this._lastHiHatCC >= this.hihatCC.threshold
-        ) {
-          drum = 'hh_closed';
+        // the pedal says how open a hi-hat hit was, wherever the kit itself draws the line
+        // (a V-51 sends its closed note only with the pedal all the way down)
+        const isHihat = drum === DrumType.HH_OPEN || drum === DrumType.HH_CLOSED;
+        if (isHihat && this.hihatCC.enabled && this._lastHiHatCC !== null) {
+          drum = hihatByPedal(this._lastHiHatCC, this.hihatCC);
         }
         if (this._isTimed(event)) this.onHit(drum, event.timeStamp, data2);
       }
