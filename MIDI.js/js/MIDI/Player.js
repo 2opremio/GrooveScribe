@@ -177,6 +177,11 @@ var nextPassFullyQueued = false;
 var passBoundaryContextTime = null;
 // The tune the next pass plays (see root.setNextTune); null when it repeats the current one.
 var nextTune = null;
+// Counts the times the queue was emptied. A note's timer takes its own entry off the front of the
+// queue only if the queue it was scheduled in is still there: a callback that stops or reloads
+// the tune has already removed it, and taking another would leave a note of the new tune
+// unqueued, so stopping couldn't silence it.
+var queueGeneration = 0;
 
 var parseTune = function (fileData) {
 	var replayer = new Replayer(MidiFile(fileData), root.timeWarp);
@@ -202,6 +207,7 @@ var queueNextPass = function (fromContextTime) {
 
 // Drops everything still queued: the notes, their timers, and any pass queued ahead.
 var clearQueue = function () {
+	queueGeneration++;
 	while (eventQueue.length) {
 		var o = eventQueue.pop();
 		window.clearTimeout(o.interval);
@@ -218,6 +224,7 @@ root.passStartContextTime = function () {
 var noteRegistrar = {}; // get event for requested note
 var onMidiEvent = undefined; // listener callback
 var scheduleTracking = function (channel, note, currentTime, delayMs, message, velocity) {
+	var generation = queueGeneration;
 	var interval = window.setTimeout(function () {
 		var data = {
 			channel: channel,
@@ -242,10 +249,8 @@ var scheduleTracking = function (channel, note, currentTime, delayMs, message, v
 			nextPassStartContextTime = null;
 		}
 		// looping was turned on too late to queue the next pass ahead: it starts one song length
-		// after this one. The queue is empty once this event leaves it; it can already be empty,
-		// when a reload in an earlier callback let that event's timer take an entry from the
-		// reloaded tune's queue.
-		var loops = !switched && root.shouldLoop && atEnd && eventQueue.length <= 1;
+		// after this one. The queue is empty once this event leaves it.
+		var loops = !switched && root.shouldLoop && atEnd && eventQueue.length === 1;
 		if (loops) {
 			passStartContextTime += (root.endTime - LEAD_IN_MS) / 1000;
 		}
@@ -260,8 +265,8 @@ var scheduleTracking = function (channel, note, currentTime, delayMs, message, v
 		passBoundaryContextTime = null;
 		root.currentTime = currentTime;
 		
-		// remove this event from the queue
-		eventQueue.shift();
+		// remove this event from the queue, unless the callback emptied it
+		if (generation === queueGeneration) eventQueue.shift();
 		
 		// the callback turned looping off: the pass queued ahead isn't played
 		if (switched && !root.shouldLoop) {
@@ -403,6 +408,7 @@ var stopAudio = function () {
 	root.playing = false;
 	nextPassStartContextTime = null;
 	root.restart += (ctx.currentTime - startTime) * 1000;
+	queueGeneration++;
 	// stop the audio, and intervals
 	while (eventQueue.length) {
 		var o = eventQueue.pop();

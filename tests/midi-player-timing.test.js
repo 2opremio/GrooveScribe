@@ -21,6 +21,7 @@ function runPlayer({
   reloadAfterFirstPass = false,
   endOfPassWorkMs = 0,
   countInNotes = 0,
+  stopAtMs = null,
 }) {
   let nowMs = 0;
   let timers = [];
@@ -102,6 +103,8 @@ function runPlayer({
   });
   player.loop(true);
   player.start();
+  // as pressing stop does, partway through a pass
+  if (stopAtMs !== null) fakeWindow.setTimeout(() => player.stop(), stopAtMs - TIMER_LATENESS_MS);
   // the player's end time counts its half-ms lead-in before the first tick
   const songLengthMs = player.endTime - 0.5;
   while (timers.length) {
@@ -124,7 +127,9 @@ function runPlayer({
     .map((s) => s.time)
     .sort((a, b) => a - b)
     .slice(0, NOTES);
-  return { scheduled, all, reloadedPass, songLengthMs, nowMs, maxLateMs };
+  const heardAfterStop =
+    stopAtMs === null ? [] : played.filter((s) => s.time * 1000 > stopAtMs).map((s) => s.time);
+  return { scheduled, all, reloadedPass, songLengthMs, nowMs, maxLateMs, heardAfterStop };
 }
 
 function song(notes) {
@@ -196,6 +201,17 @@ describe('MIDI player timing', () => {
       expect((time - all[0]) * 1000).toBeCloseTo(i * NOTE_SPACING_MS, 6);
     });
     expect(maxLateMs).toBe(0);
+  });
+
+  it('silences every note still to come when stopped after a tune reloaded on the bar line', () => {
+    const songMs = NOTES * NOTE_SPACING_MS;
+    const { heardAfterStop } = runPlayer({
+      passes: 3,
+      reloadAfterFirstPass: true,
+      endOfPassWorkMs: REBUILD_MS,
+      stopAtMs: songMs + 3000,
+    });
+    expect(heardAfterStop).toEqual([]);
   });
 
   it('queues the next pass before the end-of-pass work, so its first notes are on time', () => {
