@@ -34,7 +34,8 @@ function roomAudioContext({ clickLevel = 0.3 } = {}) {
   const sounds = []; // what the test makes the mic hear besides the clicks: [{atMs, level}]
   let micNode = null;
   let fedUntilMs = null;
-  let lastBlock = null; // the last block handed to the mic node
+  let calls = 0; // the worklet's process calls so far
+  let staleNextFrame = false; // report the next block's frame as the one before's, as Chromium does
   const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
   const node = () => ({ connect() {}, gain: param() });
   const ctx = {
@@ -76,17 +77,22 @@ function roomAudioContext({ clickLevel = 0.3 } = {}) {
         taps: sounds.map(({ atMs, level }) => ({ atMs: atMs + MIC_DELAY_MS, level })),
         seed: Math.round(fedUntilMs),
       });
-      lastBlock = { frame: Math.round((fedUntilMs * SAMPLE_RATE) / MS_PER_S), samples };
-      micNode.port.onmessage({ data: lastBlock });
+      const frame = Math.round((fedUntilMs * SAMPLE_RATE) / MS_PER_S);
+      calls++;
+      micNode.port.onmessage({
+        data: { call: calls, frame: staleNextFrame ? frame - samples.length : frame, samples },
+      });
+      staleNextFrame = false;
       fedUntilMs += lengthMs;
     },
-    /** Hand the mic node its last block again, as Chromium sometimes does. */
-    repeatMicBlock() {
-      micNode.port.onmessage({ data: lastBlock });
+    /** Report the next block's frame a block late, as Chromium now and then does. */
+    staleFrame() {
+      staleNextFrame = true;
     },
     /** Lose the next ms of the mic's sound, as a mic does now and then. */
     skipMic(ms) {
       fedUntilMs += ms;
+      calls++;
     },
   };
   globalThis.AudioWorkletNode = function () {
@@ -252,10 +258,10 @@ describe('calibrating with the mic', { timeout: 30000 }, () => {
     expect(text('calib-compare-sound')).toBe(`+${SOUND_MS} ms`);
   });
 
-  it('ignores a block of the mic handed over twice', async () => {
+  it("keeps going when the browser reports a block's frame a block late", async () => {
     const midiHandler = openDialog();
     document.getElementById('calib-choose-mic').click();
-    await measureWithMic(midiHandler, () => ctx.repeatMicBlock());
+    await measureWithMic(midiHandler, () => ctx.staleFrame());
     expect(text('calib-compare-sound')).toBe(`+${SOUND_MS} ms`);
   });
 

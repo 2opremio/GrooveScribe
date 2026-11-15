@@ -55,7 +55,8 @@ export class MicRecorder {
   constructor(audioContext) {
     this.audioContext = audioContext;
     this._chunks = [];
-    this._nextFrame = null; // the frame the next block must start at
+    this._nextFrame = null; // the frame the next block starts at, counted from the first
+    this._lastCall = null; // the worklet's call number of the last block
     this._error = null;
     this._steady = false; // whether the mic has delivered without a skip for STEADY_INPUT_MS
     this._onSteady = null; // resolves start() once it has
@@ -127,23 +128,35 @@ export class MicRecorder {
     return { samples, sampleRate, startMs: msOf(chunks[0].frame) };
   }
 
-  _add({ frame, samples }) {
-    const last = this._chunks[this._chunks.length - 1];
-    // Chromium sometimes hands the worklet one block twice; a copy of the last block adds nothing
-    if (last && frame === last.frame && sameSamples(samples, last.samples)) return;
-    const skipped = this._nextFrame !== null && frame !== this._nextFrame;
-    if (skipped && !this._steady) {
-      this._chunks = []; // still settling in: start again from here
-    } else if (skipped && !this._error) {
-      // a block missing, or a different one at a frame already recorded: the recording no
-      // longer lines up with the clock
-      const repeated = last && frame === last.frame ? ' (a different block at the same frame)' : '';
-      this._error = new Error(
-        `[MicRecorder] the mic skipped from frame ${this._nextFrame} to ${frame}${repeated}`
-      );
+  /**
+   * Place one block on the clock. A block's frame is counted from the first block's, by the
+   * blocks since: every process call posts in order, while the frame Chromium reports for a call
+   * now and then repeats the call before's (measured on DrumOS: once in about 15,000 blocks),
+   * though the samples go on in order. A reported frame one block behind the count is that; any
+   * other, or a call with no block, breaks the recording, unless the mic is still settling in.
+   */
+  _add({ call, frame, samples }) {
+    const counted = this._nextFrame;
+    const inStep =
+      samples !== null &&
+      call === this._lastCall + 1 &&
+      (frame === counted || frame === counted - samples.length);
+    this._lastCall = call;
+    if (this._chunks.length > 0 && !inStep) {
+      if (!this._steady) {
+        this._chunks = []; // still settling in: start again from the next block
+      } else if (!this._error) {
+        this._error = new Error(
+          `[MicRecorder] the mic's blocks broke off at frame ${counted}: call ${call}, ` +
+            `reported frame ${frame}, ${samples === null ? 'no block' : 'a block'}`
+        );
+      }
+      return;
     }
-    this._chunks.push({ frame, samples });
-    this._nextFrame = frame + samples.length;
+    if (samples === null) return; // the stream hasn't started delivering yet
+    const at = this._chunks.length === 0 ? frame : counted;
+    this._chunks.push({ frame: at, samples });
+    this._nextFrame = at + samples.length;
     const recordedMs =
       ((this._nextFrame - this._chunks[0].frame) * MS_PER_S) / this.audioContext.sampleRate;
     if (!this._steady && recordedMs >= STEADY_INPUT_MS) {
@@ -151,8 +164,4 @@ export class MicRecorder {
       this._onSteady();
     }
   }
-}
-
-function sameSamples(a, b) {
-  return a.length === b.length && a.every((value, i) => value === b[i]);
 }
