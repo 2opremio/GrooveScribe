@@ -17,13 +17,20 @@
 
 // Rumble, hum and footsteps sit below this; a stick on a pad and the click (2.5 kHz) above.
 const HIGH_PASS_HZ = 1000;
-// A sound is only taken when it peaks this many times above the background: the typical level
-// over the SOUND_CONTEXT_MS before it, mostly quiet, which also lets the high-pass settle.
-export const LOUD_ENOUGH = 8;
-export const SOUND_CONTEXT_MS = 500;
-// A sound starts where it first reaches this fraction of its peak: past any background, and
-// early on the steep rise of a click or a stick, so loud and soft ones are timed alike.
+// The room's noise (a fan, someone cooking) is tracked as it changes: before each sound, the
+// recording over NOISE_WINDOW_MS is cut into NOISE_SLICE_MS slices, and the noise level is the
+// typical (median) loudest point of a slice. The clicks and taps in that time fill only a few
+// slices, so they don't count as noise.
+export const NOISE_WINDOW_MS = 2000;
+const NOISE_SLICE_MS = 20;
+// A sound is only taken when it peaks this many times above the room's noise.
+export const LOUD_ENOUGH = 3;
+// A sound starts where it first reaches this fraction of its peak, early on the steep rise of a
+// click or a stick so loud and soft ones are timed alike, and clearly above the room's noise,
+// at least this many times its level, so the noise can't make it start early.
 const ONSET_FRACTION = 0.25;
+const ONSET_ABOVE_NOISE = 1.5;
+
 // Where a click is looked for, around when the coach thinks it is heard: the mic's delay plus
 // the output's error, at most well under the time to the next click.
 const CLICK_SEARCH_BEFORE_MS = 20;
@@ -188,55 +195,78 @@ function summarize(found, played) {
 }
 
 /**
- * When the loudest sound between fromMs and toMs starts, or null if nothing there stands out
- * from the background just before it.
- * @param {MicRecording} recording
+ * When the loudest sound between fromMs and toMs starts, or null if nothing there stands clear of
+ * the room's noise just before it.
+ * @param {MicRecording} recording - from NOISE_WINDOW_MS before fromMs, where it has that
  * @param {number} fromMs
  * @param {number} toMs
  * @returns {number|null}
  */
 export function soundStart(recording, fromMs, toMs) {
   const window = loudestIn(recording, fromMs, toMs);
-  if (window === null || window.peak <= window.background * LOUD_ENOUGH) return null;
-  const { signal, from, segmentStart, peak } = window;
+  if (window === null || window.peak <= window.noise * LOUD_ENOUGH) return null;
+  const { signal, from, segmentStart, peak, noise } = window;
+  const threshold = Math.max(peak * ONSET_FRACTION, noise * ONSET_ABOVE_NOISE);
   for (let i = from; i < signal.length; i++) {
-    if (Math.abs(signal[i]) >= peak * ONSET_FRACTION) {
+    if (Math.abs(signal[i]) >= threshold) {
       return recording.startMs + ((segmentStart + i) * MS_PER_S) / recording.sampleRate;
     }
   }
-  throw new Error('[MicTiming] a peak was found but no sample reached a fraction of it');
+  throw new Error('[MicTiming] a peak was found but no sample reached its onset threshold');
 }
 
 /**
- * How far the loudest sound between fromMs and toMs stands above the background just before it,
- * as a ratio: soundStart takes sounds of at least LOUD_ENOUGH.
- * @param {MicRecording} recording
+ * How loud the loudest sound between fromMs and toMs is, against the room's noise just before
+ * it: soundStart takes sounds of at least LOUD_ENOUGH.
+ * @param {MicRecording} recording - from NOISE_WINDOW_MS before fromMs, where it has that
  * @param {number} fromMs
  * @param {number} toMs
  * @returns {number|null} null when the recording has nothing there yet
  */
 export function loudness(recording, fromMs, toMs) {
   const window = loudestIn(recording, fromMs, toMs);
-  return window === null ? null : window.peak / window.background;
+  return window === null ? null : window.peak / window.noise;
 }
 
 /**
- * The loudest point between fromMs and toMs and the background before it, on the recording
- * filtered as sounds are timed, from SOUND_CONTEXT_MS before fromMs; null if there is nothing.
+ * The loudest point between fromMs and toMs, and the room's noise over the NOISE_WINDOW_MS before
+ * it, on the recording filtered as sounds are timed; null if there is nothing there yet.
  */
 function loudestIn(recording, fromMs, toMs) {
   const toIndex = (ms) => Math.round(((ms - recording.startMs) * recording.sampleRate) / MS_PER_S);
-  const segmentStart = Math.max(0, toIndex(fromMs - SOUND_CONTEXT_MS));
+  const segmentStart = Math.max(0, toIndex(fromMs - NOISE_WINDOW_MS));
   const from = Math.max(segmentStart, toIndex(fromMs)) - segmentStart;
   const signal = highPass(
     recording.samples.subarray(segmentStart, Math.min(recording.samples.length, toIndex(toMs))),
     recording.sampleRate
   );
   if (signal.length <= from) return null;
-  const background = medianOf(Array.from(signal, Math.abs));
   let peak = 0;
   for (let i = from; i < signal.length; i++) peak = Math.max(peak, Math.abs(signal[i]));
-  return { signal, from, segmentStart, peak, background };
+  return {
+    signal,
+    from,
+    segmentStart,
+    peak,
+    noise: noiseBefore(signal, from, recording.sampleRate),
+  };
+}
+
+/**
+ * The typical loudest point of the NOISE_SLICE_MS slices of signal before index end (the whole
+ * slices only); over the window itself when there is nothing before it yet.
+ */
+function noiseBefore(signal, end, sampleRate) {
+  const slice = Math.round((NOISE_SLICE_MS * sampleRate) / MS_PER_S);
+  const stop = end >= slice ? end : signal.length;
+  const peaks = [];
+  for (let start = 0; start + slice <= stop; start += slice) {
+    let peak = 0;
+    for (let i = start; i < start + slice; i++) peak = Math.max(peak, Math.abs(signal[i]));
+    peaks.push(peak);
+  }
+  if (peaks.length === 0) throw new Error('[MicTiming] too little recording to tell its noise');
+  return medianOf(peaks);
 }
 
 /** A second-order Butterworth high-pass at HIGH_PASS_HZ (the audio EQ cookbook's). */

@@ -24,6 +24,7 @@ function measure({
   drumSoundLevel = 0.5,
   clickLevel = 0.3,
   knockAfterFirstTapMs = null,
+  roomNoise = undefined,
   seed = 1,
 }) {
   const jitter = normalNoise(seed + 100);
@@ -51,7 +52,14 @@ function measure({
   }
   const startMs = 500;
   const recording = {
-    samples: roomSound({ startMs, lengthMs: 62000, clicks: heardClicks, taps: heardTaps, seed }),
+    samples: roomSound({
+      startMs,
+      lengthMs: 62000,
+      clicks: heardClicks,
+      taps: heardTaps,
+      noise: roomNoise,
+      seed,
+    }),
     sampleRate: SAMPLE_RATE,
     startMs,
   };
@@ -144,6 +152,15 @@ describe('measuring the system with a mic', () => {
     });
     expect(knock.failure).toBeNull();
     expect(Math.abs(knock.stickMs - plain.stickMs)).toBeLessThan(0.5);
+  });
+
+  it('times sounds the same over the steady hiss of a fan', () => {
+    const quiet = measure({ outputErrorMs: 10, midiDelayMs: 5, micDelayMs: 20 });
+    // a hiss ten times the quiet room's, whose peaks reach a fifth of the sounds'
+    const fan = measure({ outputErrorMs: 10, midiDelayMs: 5, micDelayMs: 20, roomNoise: 0.02 });
+    expect(fan.failure).toBeNull();
+    expect(Math.abs(fan.stickMs - quiet.stickMs)).toBeLessThan(0.5);
+    expect(Math.abs(fan.soundMs - quiet.soundMs)).toBeLessThan(0.5);
   });
 
   it("doesn't take a drum sound found before its stick: the kit can't sound early", () => {

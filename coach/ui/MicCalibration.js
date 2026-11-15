@@ -6,7 +6,7 @@ import {
   soundStart,
   loudness,
   LOUD_ENOUGH,
-  SOUND_CONTEXT_MS,
+  NOISE_WINDOW_MS,
   MIN_CLICKS_FOUND_FRACTION,
 } from '../engine/MicTiming.js';
 
@@ -279,7 +279,7 @@ export class MicCalibration {
     const listen = (item, beforeMs, afterMs) => {
       if (item.heard !== null || until < item.ms + afterMs) return false;
       const [from, to] = [item.ms - beforeMs, item.ms + afterMs];
-      const recording = this._recorder.recording(from - SOUND_CONTEXT_MS, to);
+      const recording = this._recorder.recording(from - NOISE_WINDOW_MS, to);
       item.heard = soundStart(recording, from, to) !== null;
       return true;
     };
@@ -300,7 +300,7 @@ export class MicCalibration {
     if (!METER_STEPS.includes(this._step)) return;
     const fromMs = untilMs - METER_WINDOW_MS;
     const ratio = loudness(
-      this._recorder.recording(fromMs - SOUND_CONTEXT_MS, untilMs),
+      this._recorder.recording(fromMs - NOISE_WINDOW_MS, untilMs),
       fromMs,
       untilMs
     );
