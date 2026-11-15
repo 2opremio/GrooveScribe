@@ -272,7 +272,7 @@
 
 /* names a calibration with its result and date */
 #coachSettingsDialog #coach-calib-use-select {
-  width: 245px;
+  width: 280px;
 }
 
 /* the app draws range inputs as a thick gray bar with a gray knob: a thin track and a blue
@@ -1046,6 +1046,16 @@
   flex-direction: column;
 }
 
+.calib-compare small {
+  color: #555;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+#calib-result-explanation p {
+  margin: 6px 0;
+}
+
 .calib-compare span {
   color: #555;
   font-size: 14px;
@@ -1102,6 +1112,34 @@
 
 .calib-stepper li.calib-step-done::before {
   content: '\2713  ';
+}
+
+/* where the headphones go, at the top of each step: on the mic, or away from it */
+#calib-mic-headphones {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 4px 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+#calib-mic-headphones:empty {
+  display: none;
+}
+
+#calib-mic-headphones::before {
+  content: '\f025  ';
+  font-family: FontAwesome;
+}
+
+.calib-headphones-on {
+  background: var(--highlight-color);
+  color: #fff;
+}
+
+.calib-headphones-off {
+  background: #f0ad4e;
+  color: #222;
 }
 
 #calib-mic-title {

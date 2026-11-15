@@ -30,7 +30,7 @@ describe('choosing which calibration the coach uses', () => {
   it('offers the latest result of each way, and switches between them', () => {
     expect([...q('#coach-calib-use-select').options].map((o) => o.textContent)).toEqual([
       expect.stringContaining('Play along: -23 ms'),
-      expect.stringContaining('Mic: +11 ms'),
+      expect.stringContaining('Mic, drum sound: +11 ms'),
       'By hand',
     ]);
     expect(q('#coach-calib-use-select').value).toBe('playAlong');

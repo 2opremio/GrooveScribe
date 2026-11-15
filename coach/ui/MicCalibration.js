@@ -14,7 +14,7 @@ const MS_PER_S = 1000;
 // clicks per round: enough for a median to within a fraction of a ms, in 9 s
 const CLICKS_PER_ROUND = 24;
 const CLICK_INTERVAL_MS = 375;
-// taps the mic must hear; MicTiming needs most of them found again
+// taps the mic must hear in each tap step; MicTiming needs most of them found again
 const TAPS_WANTED = 20;
 // taps the mic may miss before it gives up: it can't hear the pad well enough
 const MAX_MISSED_TAPS = 6;
@@ -37,13 +37,38 @@ const MISSED_TAPS_WARNING = 2;
 // how long a message about one tap stays up to be read
 const TAP_MESSAGE_MS = 3000;
 
+// where the headphones are, said at the top of each step that measures
+const HEADPHONES_ON_MIC = ['clicks1', 'soundTaps', 'replace', 'clicks2'];
+const HEADPHONES = {
+  clicks1: 'Headphones: on the mic',
+  soundTaps: 'Headphones: still on the mic',
+  toPad: 'Headphones: take them off the mic, and put them down an arm’s length away',
+  stickTaps: 'Headphones: away from the mic',
+  replace: 'Headphones: hang them back on the mic',
+  clicks2: 'Headphones: on the mic',
+};
+
 // each click's or tap's mark, by whether its sound was heard (null: not checked yet)
 const MARKS = { null: 'waiting', true: 'heard', false: 'missed' };
 
-/** The steps, in order; the stepper shows the three that measure. */
-const STEPS = ['setup', 'clicks1', 'toPad', 'taps', 'replace', 'clicks2', 'analyzing'];
+/**
+ * The steps, in order. The headphones hang on the mic for the clicks and the drum sounds, and
+ * are put away for the stick taps, so the mic hears only the stick.
+ */
+const STEPS = [
+  'setup',
+  'clicks1',
+  'soundTaps',
+  'toPad',
+  'stickTaps',
+  'replace',
+  'clicks2',
+  'analyzing',
+];
+// the steps where the player taps, each with its own taps
+const TAP_STEPS = ['soundTaps', 'stickTaps'];
 // the steps whose sounds the level meter shows
-const METER_STEPS = ['clicks1', 'taps', 'clicks2'];
+const METER_STEPS = ['clicks1', 'soundTaps', 'stickTaps', 'clicks2'];
 // the meter shows the loudest sound in this much of the latest recording
 const METER_WINDOW_MS = 300;
 // how far above the background a sound fills the meter
@@ -51,11 +76,13 @@ const METER_FULL = 200;
 
 /**
  * MicCalibration - Measures the system's own delay with the mic DrumOS records: the click as it
- * comes out of the headphones, and stick taps on a pad, against what the coach sees of each.
+ * comes out of the headphones, the kit's drum sound, and stick taps on a pad, against what the
+ * coach sees of each.
  *
- * The player hangs the headphones on the mic for a round of clicks, takes them away and taps the
- * pad next to the mic, then puts them back for a second round; MicTiming works out the result.
- * Whatever can't succeed stops right away: a click the mic can't hear, a pad it can't hear.
+ * With the headphones hung on the mic, a round of clicks plays and the player taps a pad away
+ * from it, so it hears the drum sound; with them put away and the mic by a pad, the player taps
+ * that pad, so it hears the stick; with them back on, a second round of clicks plays. MicTiming
+ * works out the result. Whatever can't succeed stops right away: a sound the mic can't hear.
  */
 export class MicCalibration {
   /**
@@ -80,7 +107,8 @@ export class MicCalibration {
     this._step = 'setup';
     this._rounds = []; // per click round, when each click is heard by the coach's reckoning (ms)
     this._clicks = []; // the click round playing: [{ms, heard: boolean|null}]
-    this._taps = []; // [{ms, heard: boolean|null}], context time of each tap's MIDI message
+    // by tap step, [{ms, heard: boolean|null}]: context time of each tap's MIDI message
+    this._taps = { soundTaps: [], stickTaps: [] };
     this._pendingClicks = [];
     this._timer = null;
     this._originalOnHit = null;
@@ -93,22 +121,23 @@ export class MicCalibration {
       <div id="calib-mic-setup">
         ${micSetupDiagram()}
         <ol class="calib-mic-checklist">
-          <li>Take off your headphones and hang them on the mic, the ear cups either side of it.
-          From here on, follow the screen.</li>
+          <li><strong>Take off your headphones and hang them on the mic</strong>, the ear cups
+          either side of it. From here on, follow the screen.</li>
           <li>Have a stick ready. Keep the kit quiet until it asks you to tap.</li>
-          <li>Halfway through, it asks you to put the mic next to a pad, then back.</li>
+          <li>Each step says where the headphones go: on the mic, or put away.</li>
         </ol>
         <label class="calib-mic-volume">Click volume
           <input type="range" id="calib-mic-volume" min="0" max="100" step="5"></label>
-        <p class="calib-subtle">About a minute. It asks you to move the headphones twice.
-        Mic: <span class="calib-mic-name"></span></p>
+        <p class="calib-subtle">About two minutes, in four steps. Mic: <span class="calib-mic-name"></span></p>
       </div>
       <div id="calib-mic-running">
         <ol class="calib-stepper">
           <li data-steps="clicks1">Click</li>
-          <li data-steps="toPad taps replace">Taps</li>
-          <li data-steps="clicks2 analyzing">Click again</li>
+          <li data-steps="soundTaps">Drum sound</li>
+          <li data-steps="toPad stickTaps">Stick</li>
+          <li data-steps="replace clicks2 analyzing">Click again</li>
         </ol>
+        <div id="calib-mic-headphones"></div>
         <div id="calib-mic-title" aria-live="polite"></div>
         <div id="calib-mic-hint"></div>
         <div id="calib-mic-meter" aria-hidden="true">
@@ -141,7 +170,7 @@ export class MicCalibration {
     this._ctx = ctx;
     this._clock = clock;
     this._rounds = [];
-    this._taps = [];
+    this._taps = { soundTaps: [], stickTaps: [] };
     this._recorder = new MicRecorder(ctx);
     let stream;
     try {
@@ -166,7 +195,7 @@ export class MicCalibration {
 
   /** The player is ready: the mic is by a pad, for the taps, or back under the headphones. */
   continue() {
-    if (this._step === 'toPad') this._setStep('taps');
+    if (this._step === 'toPad') this._setStep('stickTaps');
     else if (this._step === 'replace') this._playRound('clicks2');
     else throw new Error(`[MicCalibration] nothing to continue at step '${this._step}'`);
   }
@@ -214,8 +243,9 @@ export class MicCalibration {
       this._render();
       return;
     }
-    if (this._step !== 'taps') return;
-    const last = this._taps[this._taps.length - 1];
+    if (!TAP_STEPS.includes(this._step)) return;
+    const taps = this._taps[this._step];
+    const last = taps[taps.length - 1];
     if (last && ms - last.ms < MIN_TAP_GAP_MS) {
       this._message = {
         text: 'A little slower: about one tap a second.',
@@ -225,7 +255,7 @@ export class MicCalibration {
       this._render();
       return;
     }
-    this._taps.push({ ms, heard: null });
+    taps.push({ ms, heard: null });
     this._render();
   }
 
@@ -254,8 +284,10 @@ export class MicCalibration {
       return true;
     };
     for (const click of this._clicks) listen(click, 0, CLICK_LISTEN_MS);
-    for (const tap of this._taps) {
-      if (listen(tap, TAP_LISTEN_MS, TAP_LISTEN_MS) && !tap.heard) this._onTapMissed(tap);
+    for (const step of TAP_STEPS) {
+      for (const tap of this._taps[step]) {
+        if (listen(tap, TAP_LISTEN_MS, TAP_LISTEN_MS) && !tap.heard) this._onTapMissed(step, tap);
+      }
     }
     this._showLevel(until);
     this._advance();
@@ -283,8 +315,6 @@ export class MicCalibration {
   /** Move on, or stop, by what has been heard so far. */
   _advance() {
     const roundDone = this._clicks.length > 0 && this._clicks.every((c) => c.heard !== null);
-    const heardTaps = this._taps.filter((t) => t.heard).length;
-    const missedTaps = this._taps.filter((t) => t.heard === false).length;
     if (roundDone && this._step !== 'setup' && !this._heardEnoughClicks()) {
       this._fail(
         `The mic heard ${this._clicks.filter((c) => c.heard).length} of ${CLICKS_PER_ROUND} clicks.`,
@@ -293,17 +323,33 @@ export class MicCalibration {
     } else if (roundDone && this._step === 'clicks1') {
       this._rounds.push(this._clicks.map((c) => c.ms));
       this._clicks = [];
-      this._setStep('toPad');
+      this._setStep('soundTaps');
     } else if (roundDone && this._step === 'clicks2') {
       this._rounds.push(this._clicks.map((c) => c.ms));
       this._finish();
-    } else if (this._step === 'taps' && missedTaps >= MAX_MISSED_TAPS) {
+    } else if (TAP_STEPS.includes(this._step)) {
+      this._advanceTaps(this._taps[this._step]);
+    } else {
+      this._render();
+    }
+  }
+
+  /** Move on once the mic has heard enough taps of this step, or stop if it misses too many. */
+  _advanceTaps(taps) {
+    const heard = taps.filter((t) => t.heard).length;
+    const missed = taps.filter((t) => t.heard === false).length;
+    const sound = this._step === 'soundTaps';
+    if (missed >= MAX_MISSED_TAPS) {
       this._fail(
-        `The mic missed ${missedTaps} of your taps.`,
-        'Put the mic right next to the pad, tap firmly, and try again.'
+        sound
+          ? `The mic didn't hear the drum sound of ${missed} of your taps.`
+          : `The mic missed ${missed} of your stick taps.`,
+        sound
+          ? 'Keep the headphones on the mic, turn the kit’s volume up, and try again.'
+          : 'Put the mic right next to the pad, tap firmly, and try again.'
       );
-    } else if (this._step === 'taps' && heardTaps >= TAPS_WANTED) {
-      this._setStep('replace');
+    } else if (heard >= TAPS_WANTED) {
+      this._setStep(sound ? 'toPad' : 'replace');
     } else {
       this._render();
     }
@@ -319,11 +365,14 @@ export class MicCalibration {
     this.onError(problem, advice);
   }
 
-  _onTapMissed(tap) {
-    const recent = this._taps.filter((t) => t.heard !== null).slice(-MISSED_TAPS_WARNING);
+  _onTapMissed(step, tap) {
+    const recent = this._taps[step].filter((t) => t.heard !== null).slice(-MISSED_TAPS_WARNING);
     if (recent.length === MISSED_TAPS_WARNING && recent.every((t) => !t.heard)) {
       this._message = {
-        text: 'The mic missed your last taps: move it closer to the pad, or tap a bit harder.',
+        text:
+          step === 'soundTaps'
+            ? 'The mic missed your last drum sounds: keep the headphones on it, or turn the kit up.'
+            : 'The mic missed your last taps: move it closer to the pad, or tap a bit harder.',
         atMs: tap.ms,
         forMs: TAP_MESSAGE_MS,
       };
@@ -338,7 +387,8 @@ export class MicCalibration {
         recording: this._recorder.recording(),
         clickRounds: this._rounds,
         clickIntervalMs: CLICK_INTERVAL_MS,
-        tapsMs: this._taps.map((t) => t.ms),
+        soundTapsMs: this._taps.soundTaps.map((t) => t.ms),
+        stickTapsMs: this._taps.stickTaps.map((t) => t.ms),
       });
     } catch (error) {
       console.error('[MicCalibration] could not measure:', error);
@@ -355,6 +405,9 @@ export class MicCalibration {
     this._message = null;
     this.root.querySelector('#calib-mic-setup').style.display = step === 'setup' ? '' : 'none';
     this.root.querySelector('#calib-mic-running').style.display = step === 'setup' ? 'none' : '';
+    this.root.querySelector('#calib-mic-meter').style.display = METER_STEPS.includes(step)
+      ? ''
+      : 'none';
     const stepIndex = STEPS.indexOf(step);
     for (const item of this.root.querySelectorAll('.calib-stepper li')) {
       const own = item.dataset.steps.split(' ').map((s) => STEPS.indexOf(s));
@@ -370,6 +423,11 @@ export class MicCalibration {
     const now = this._ctx ? this._ctx.currentTime * MS_PER_S : 0;
     const message = this._message && now < this._message.atMs + this._message.forMs;
     const said = this._said();
+    const headphones = this.root.querySelector('#calib-mic-headphones');
+    headphones.textContent = HEADPHONES[this._step] ?? '';
+    headphones.className = HEADPHONES_ON_MIC.includes(this._step)
+      ? 'calib-headphones-on'
+      : 'calib-headphones-off';
     this.root.querySelector('#calib-mic-title').textContent = said.title;
     this.root.querySelector('#calib-mic-hint').textContent = message
       ? this._message.text
@@ -385,7 +443,11 @@ export class MicCalibration {
       Array.from({ length: total }, (_, i) => MARKS[String(items[i]?.heard ?? null)]);
     const heard = (items) => items.filter((i) => i.heard).length;
     // a mark for each tap wanted, and one more for each the mic missed
-    const tapMarks = TAPS_WANTED + this._taps.filter((t) => t.heard === false).length;
+    const tapMarks = (taps) => TAPS_WANTED + taps.filter((t) => t.heard === false).length;
+    const tapsSaid = (taps) => ({
+      count: `${heard(taps)} of ${TAPS_WANTED} taps heard`,
+      marks: marksOf(taps, tapMarks(taps)),
+    });
     switch (this._step) {
       case 'clicks1':
       case 'clicks2': {
@@ -401,28 +463,35 @@ export class MicCalibration {
           marks: marksOf(this._clicks, CLICKS_PER_ROUND),
         };
       }
+      case 'soundTaps':
+        return {
+          title: 'Tap a pad away from the mic',
+          hint:
+            'About once a second, on a pad at least an arm’s length from the mic, so it hears ' +
+            'the drum sound from the headphones, not your stick.',
+          ...tapsSaid(this._taps.soundTaps),
+        };
       case 'toPad':
         return {
           title: 'Put the mic next to a pad',
           hint:
-            'Lift the headphones off and set them down away from the mic. Put the mic right ' +
-            'next to a pad: the closer, the more exact (every 34 cm adds 1 ms). Then press Continue.',
+            'Put the mic right next to a pad: the closer, the more exact (every 34 cm adds ' +
+            '1 ms). Then press Continue.',
           count: '',
           marks: [],
         };
-      case 'taps':
+      case 'stickTaps':
         return {
           title: 'Tap the pad next to the mic',
           hint: 'Firmly, about once a second. A tap counts when the meter passes the line.',
-          count: `${heard(this._taps)} of ${TAPS_WANTED} taps heard`,
-          marks: marksOf(this._taps, tapMarks),
+          ...tapsSaid(this._taps.stickTaps),
         };
       case 'replace':
         return {
-          title: 'Put the headphones back on the mic',
-          hint: 'Bring the mic back, hang the headphones on it, then press Continue. Hands off the kit.',
-          count: `${heard(this._taps)} of ${TAPS_WANTED} taps heard`,
-          marks: marksOf(this._taps, tapMarks),
+          title: 'Hang the headphones back on the mic',
+          hint: 'Bring the mic back if you moved it, then press Continue. Hands off the kit.',
+          count: '',
+          marks: [],
         };
       case 'analyzing':
         return { title: 'Working it out…', hint: '', count: '', marks: [] };
@@ -432,12 +501,12 @@ export class MicCalibration {
   }
 }
 
-/** The setup as a picture: the headphones hung on the mic, and the pad and stick for later. */
 /** Where a loudness sits on the meter, from 0 to 1: on a log scale, as loudness is heard. */
 function meterFraction(ratio) {
   return Math.max(0, Math.min(1, Math.log(ratio) / Math.log(METER_FULL)));
 }
 
+/** The setup as a picture: the headphones hung on the mic, and the pad and stick for later. */
 function micSetupDiagram() {
   return `<svg id="calib-mic-diagram" viewBox="0 0 320 150" role="img"
       aria-label="Headphones hung on the mic, an ear cup either side of it, and the mic standing right next to a drum pad.">

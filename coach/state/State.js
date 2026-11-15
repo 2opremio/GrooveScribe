@@ -7,11 +7,11 @@ import { TOLERANCE_LEVELS } from '../engine/TimingEvaluator.js';
 const VALID_MODES = ['practice', 'performance'];
 // which hits near a calibration click count as the tap: only the loudest, or every hit
 const VALID_CALIBRATION_HIT_RULES = ['loudest', 'every'];
-// How the calibration offset was set: measured with the mic, by playing along, or typed in.
-// null for an offset set before this was kept.
-const VALID_CALIBRATION_METHODS = ['mic', 'playAlong', 'hand', null];
+// How the calibration offset was set: by playing along, measured with the mic (judging the drum
+// sound, or the stick), or typed in. null for an offset set before this was kept.
+const VALID_CALIBRATION_METHODS = ['playAlong', 'mic', 'micStick', 'hand', null];
 // the methods that measure, kept in the calibration history
-const MEASURED_CALIBRATION_METHODS = ['mic', 'playAlong'];
+const MEASURED_CALIBRATION_METHODS = ['playAlong', 'mic', 'micStick'];
 // calibrations kept, newest last: enough to see how the results move over a few weeks
 const CALIBRATION_HISTORY_KEPT = 30;
 const MAX_MIDI_VELOCITY = 127;
@@ -164,7 +164,7 @@ export class StateManager {
 
   /**
    * Keep a finished calibration in the history, and save.
-   * @param {{method: 'mic'|'playAlong', offsetMs: number, details: string}} calibration
+   * @param {{method: 'playAlong'|'mic'|'micStick', offsetMs: number, details: string}} calibration
    */
   recordCalibration({ method, offsetMs, details }) {
     const entry = { method, offsetMs, at: new Date().toISOString(), details };

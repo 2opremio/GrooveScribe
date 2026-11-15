@@ -62,10 +62,12 @@ export class CalibrationDialog {
     this._audioCtx = null;
     this._run = null; // the CalibrationRun being played
     this._status = null; // the run's status after the last hit
-    this._resultMs = null; // calibration offset from the last completed run
+    // what the result screen offers to use: one way's result, the mic's two, or a comparison;
+    // null while there is none to accept
+    this._resultKind = null;
     this._method = null; // 'playAlong', 'mic' or 'both', the way chosen
     // results of this calibration, in ms, by method; 'both' fills both and compares them
-    this._results = { playAlong: null, mic: null };
+    this._results = { playAlong: null, mic: null, micStick: null };
     this._micName = drumOSMicName();
     this._mic = null; // the MicCalibration, when there is a mic
     this._firstClickAudioTime = null; // when the run's first click plays, on the audio clock (s)
@@ -158,6 +160,7 @@ export class CalibrationDialog {
                 <button class="coach-btn coach-btn-secondary" id="calib-retry-btn" style="display:none;">Try again</button>
                 <button class="coach-btn coach-btn-primary" id="calib-start-btn">Start</button>
                 <button class="coach-btn coach-btn-primary" id="calib-continue-btn" style="display:none;">Continue</button>
+                <button class="coach-btn coach-btn-secondary" id="calib-accept-stick-btn" style="display:none;">Use stick</button>
                 <button class="coach-btn coach-btn-secondary" id="calib-accept-mic-btn" style="display:none;">Use mic</button>
                 <button class="coach-btn coach-btn-primary" id="calib-accept-btn" style="display:none;">Accept</button>
             </div>
@@ -190,9 +193,10 @@ export class CalibrationDialog {
       });
     }
     this._q('#calib-accept-btn').addEventListener('click', () =>
-      this._accept(this._method === 'mic' ? 'mic' : 'playAlong')
+      this._accept(RESULT_KINDS[this._resultKind].accepts)
     );
     this._q('#calib-accept-mic-btn').addEventListener('click', () => this._accept('mic'));
+    this._q('#calib-accept-stick-btn').addEventListener('click', () => this._accept('micStick'));
     this._q('#calib-retry-btn').addEventListener('click', () => this._retry());
   }
 
@@ -219,14 +223,14 @@ export class CalibrationDialog {
   /** @param {'mic'|'both'} method - the mic alone, or the mic and then playing along */
   _chooseMic(method) {
     this._method = method;
-    this._results = { playAlong: null, mic: null };
+    this._results = { playAlong: null, mic: null, micStick: null };
     this._showPhase('mic');
     this._mic.show();
   }
 
   _choosePlayAlong() {
     this._method = 'playAlong';
-    this._results = { playAlong: null, mic: null };
+    this._results = { playAlong: null, mic: null, micStick: null };
     this._showPlayAlongInstructions();
   }
 
@@ -264,18 +268,22 @@ export class CalibrationDialog {
     for (const [key, id] of Object.entries(ids)) {
       this._q(`#${id}`).style.display = key === phase ? 'block' : 'none';
     }
-    const comparing = phase === 'result' && this._method === 'both' && this._resultMs !== null;
+    // the results to choose from, once a run has finished with some
+    const kind = phase === 'result' ? this._resultKind : null;
     this._showButtons({
-      // back to the choice; when comparing, Try again and the two results are enough
-      back: (phase === 'instructions' || phase === 'result') && this._mic !== null && !comparing,
+      // back to the choice; with two results to choose from, Try again is enough
+      back:
+        (phase === 'instructions' || phase === 'result') &&
+        this._mic !== null &&
+        (kind === null || kind === 'playAlong'),
       start: phase === 'instructions',
       continue: false,
       retry: phase === 'result',
-      // Accept appears with a result, and only a finished run has one
-      accept: phase === 'result' && this._resultMs !== null,
-      'accept-mic': comparing,
+      accept: kind !== null,
+      'accept-mic': kind === 'compare',
+      'accept-stick': kind === 'mic',
     });
-    this._q('#calib-accept-btn').textContent = comparing ? 'Use play along' : 'Accept';
+    if (kind !== null) this._q('#calib-accept-btn').textContent = RESULT_KINDS[kind].acceptLabel;
   }
 
   /** The buttons for a step of the mic measurement. */
@@ -287,6 +295,7 @@ export class CalibrationDialog {
       retry: false,
       accept: false,
       'accept-mic': false,
+      'accept-stick': false,
     });
   }
 
@@ -299,7 +308,7 @@ export class CalibrationDialog {
   // -- Running --
 
   _start() {
-    this._resultMs = null;
+    this._resultKind = null;
     this._hitMessage = null;
     this._hits = 0;
     this._lastHitMs = null;
@@ -497,7 +506,7 @@ export class CalibrationDialog {
   // -- The mic --
 
   _startMic() {
-    this._resultMs = null;
+    this._resultKind = null;
     this._ensureAudioContext();
     document.addEventListener('keydown', this._onKeyDown);
     this._mic.start(this._audioCtx, this._clock);
@@ -511,24 +520,36 @@ export class CalibrationDialog {
       this._showFailure(...failure);
       return;
     }
-    const resultMs = Math.round(result.systemMs);
+    const soundMs = Math.round(result.soundMs);
+    const stickMs = Math.round(result.stickMs);
+    const soundDelayMs = Math.round(result.soundDelayMs);
     const [before, after] = result.clicks;
+    const { soundTaps, stickTaps } = result;
     const details =
       `Clicks heard ${before.found}/${before.played}, then ${after.found}/${after.played}. ` +
-      `Taps heard ${result.taps.found}/${result.taps.played}, spread ±${result.taps.spreadMs.toFixed(1)} ms. ` +
+      `Drum sounds heard ${soundTaps.found}/${soundTaps.played}, ` +
+      `stick taps ${stickTaps.found}/${stickTaps.played} (spread ±${stickTaps.spreadMs.toFixed(1)} ms). ` +
       `Result ±${result.precisionMs.toFixed(1)} ms. Mic drift ${Math.abs(result.roundShiftMs).toFixed(1)} ms.`;
-    this._results.mic = resultMs;
-    coachState.recordCalibration({ method: 'mic', offsetMs: resultMs, details });
+    this._results.mic = soundMs;
+    this._results.micStick = stickMs;
+    coachState.recordCalibration({ method: 'mic', offsetMs: soundMs, details });
+    coachState.recordCalibration({ method: 'micStick', offsetMs: stickMs, details });
     if (this._method === 'both') {
       this._showPlayAlongInstructions();
       return;
     }
-    this._resultMs = resultMs;
+    this._resultKind = 'mic';
     this._showResult(
-      `${signed(resultMs)} ms`,
-      `Your kit and computer shift each hit ${Math.abs(resultMs)} ms ` +
-        `${resultMs < 0 ? 'earlier' : 'later'} than you hear it against the click. Sessions ` +
-        'correct for this, so they show how early or late you really play.',
+      [
+        ['Drum sound on the click', soundMs, 'calib-compare-sound', 'judges what you hear'],
+        ['Stick on the click', stickMs, 'calib-compare-stick', 'judges when the stick lands'],
+      ],
+      [
+        `Your kit and computer delay each hit by ${stickMs} ms, and the kit plays the drum ` +
+          `${soundDelayMs} ms after the stick lands.`,
+        'Neither number includes your own feel, so sessions will show how early or late you ' +
+          'really play.',
+      ],
       [details, this._previousText(), this._lastOtherText('playAlong')].filter(Boolean).join(' ')
     );
   }
@@ -546,23 +567,22 @@ export class CalibrationDialog {
     return `Last ${METHOD_NAMES[method]}: ${signed(last.offsetMs)} ms (${day}).`;
   }
 
-  /** Both results side by side, and what their difference means. */
+  /** The results side by side, and what their differences mean. */
   _showComparison() {
-    const { mic, playAlong } = this._results;
-    const feelMs = playAlong - mic;
-    this._resultMs = playAlong;
+    const { mic, micStick, playAlong } = this._results;
+    this._resultKind = 'compare';
     this._showResult(
-      '',
-      `The mic measured only your kit and computer; playing along adds your feel. ${feelText(feelMs)} ` +
-        'Play along makes playing like you just did count as on time. The mic judges you against ' +
-        'the click itself.',
+      [
+        ['Play along', playAlong, 'calib-compare-play', 'your feel counts as on time'],
+        ['Mic: drum sound', mic, 'calib-compare-sound', 'judges what you hear'],
+        ['Mic: stick', micStick, 'calib-compare-stick', 'judges when the stick lands'],
+      ],
+      [
+        feelText(playAlong - mic, playAlong - micStick),
+        'The mic measured only your kit and computer; playing along adds your feel on top.',
+      ],
       this._previousText()
     );
-    this._q('#calib-result-value').innerHTML = `
-      <div class="calib-compare">
-        <div><span>Play along</span><strong id="calib-compare-play">${signed(playAlong)} ms</strong></div>
-        <div><span>Mic</span><strong id="calib-compare-mic">${signed(mic)} ms</strong></div>
-      </div>`;
   }
 
   // -- Finish & results --
@@ -579,7 +599,7 @@ export class CalibrationDialog {
       this._showComparison();
       return;
     }
-    this._resultMs = resultMs;
+    this._resultKind = 'playAlong';
     this._showResult(
       `${signed(resultMs)} ms`,
       `Your hits land ${Math.abs(resultMs)} ms ${resultMs < 0 ? 'before' : 'after'} the click, ` +
@@ -622,18 +642,40 @@ export class CalibrationDialog {
   }
 
   _showFailure(problem, advice, details = '') {
-    this._resultMs = null;
+    this._resultKind = null;
     this._showResult('No result', `${problem} ${advice}`, details);
   }
 
+  /**
+   * @param {string|[string, number, string, string][]} value - the result, or several to choose
+   *   from side by side, as [name, ms, element id, what it judges]
+   * @param {string|string[]} explanation - one paragraph, or several short ones
+   */
   _showResult(value, explanation, details) {
-    this._q('#calib-result-value').textContent = value;
-    this._q('#calib-result-explanation').textContent = explanation;
+    const valueEl = this._q('#calib-result-value');
+    if (typeof value === 'string') valueEl.textContent = value;
+    else {
+      valueEl.innerHTML = `<div class="calib-compare">${value
+        .map(
+          ([name, ms, id, judges]) =>
+            `<div><span>${name}</span><strong id="${id}">${signed(ms)} ms</strong>` +
+            `<small>${judges}</small></div>`
+        )
+        .join('')}</div>`;
+    }
+    const explanationEl = this._q('#calib-result-explanation');
+    explanationEl.replaceChildren(
+      ...[explanation].flat().map((line) => {
+        const p = document.createElement('p');
+        p.textContent = line;
+        return p;
+      })
+    );
     this._q('#calib-result-details').textContent = details;
     this._showPhase('result');
   }
 
-  /** @param {'playAlong'|'mic'} method - whose result the coach uses */
+  /** @param {'playAlong'|'mic'|'micStick'} method - whose result the coach uses */
   _accept(method) {
     coachState.calibrationOffset = this._results[method];
     coachState.calibrationMethod = method;
@@ -645,7 +687,7 @@ export class CalibrationDialog {
   }
 
   _retry() {
-    this._resultMs = null;
+    this._resultKind = null;
     if (this._method === 'playAlong') this._choosePlayAlong();
     // comparing, with the mic measured already: only playing along again
     else if (this._method === 'both' && this._results.mic !== null) {
@@ -742,15 +784,28 @@ function playAlongDiagram() {
 
 // how each method is named in a sentence
 const METHOD_NAMES = { playAlong: 'play-along calibration', mic: 'mic measurement' };
+// per result screen, what its main button uses and says
+const RESULT_KINDS = {
+  playAlong: { accepts: 'playAlong', acceptLabel: 'Accept' },
+  mic: { accepts: 'mic', acceptLabel: 'Use sound' },
+  compare: { accepts: 'playAlong', acceptLabel: 'Use play along' },
+};
 // results this close are the same: within what either can measure
 const FEEL_SAME_MS = 3;
 
-/** What the gap between playing along and the mic says about the player's feel. */
-function feelText(feelMs) {
-  if (Math.abs(feelMs) < FEEL_SAME_MS) return 'You played right on the click, so the two agree.';
+/**
+ * What the gaps between playing along and the mic say about the player's feel.
+ * @param {number} soundFeelMs - where the player's drum sound lands against the click
+ * @param {number} stickFeelMs - where their stick lands
+ */
+function feelText(soundFeelMs, stickFeelMs) {
+  if (Math.abs(soundFeelMs) < FEEL_SAME_MS) {
+    return 'Playing along, your drum sound landed right on the click.';
+  }
+  const side = (ms) => `${Math.abs(ms)} ms ${ms > 0 ? 'after' : 'before'}`;
   return (
-    `So you played ${Math.abs(feelMs)} ms ${feelMs > 0 ? 'after' : 'before'} the click, ` +
-    'and that’s your own feel.'
+    `Playing along, your drum sound landed ${side(soundFeelMs)} the click (your stick ` +
+    `${side(stickFeelMs)}). That gap is your own feel.`
   );
 }
 
@@ -769,10 +824,22 @@ function micFailure(result) {
         `Hang the headphones right over the mic, or turn the click volume up, and try again. ${otherWay}`,
       ];
     }
-    case 'taps':
+    case 'soundTaps':
       return [
-        `The mic heard ${result.taps.found} of your ${result.taps.played} taps.`,
+        `The mic heard the drum sound of ${result.soundTaps.found} of your ` +
+          `${result.soundTaps.played} taps.`,
+        `Keep the headphones on the mic, turn the kit’s volume up, and try again. ${otherWay}`,
+      ];
+    case 'stickTaps':
+      return [
+        `The mic heard ${result.stickTaps.found} of your ${result.stickTaps.played} stick taps.`,
         `Put the mic right next to the pad, tap firmly, and try again. ${otherWay}`,
+      ];
+    case 'stickHeard':
+      return [
+        'In the drum sound step, the mic heard your stick rather than the drum sound from the ' +
+          'headphones.',
+        `Try again, tapping a pad further from the mic. ${otherWay}`,
       ];
     case 'moved':
       return [

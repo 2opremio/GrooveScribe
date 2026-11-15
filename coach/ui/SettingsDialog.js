@@ -361,14 +361,19 @@ function signedMs(ms) {
 
 // how the status line says the calibration was set, by calibrationMethod
 const CALIBRATION_STATUS = {
-  mic: 'measured with the mic',
+  mic: 'measured with the mic, drum sound',
+  micStick: 'measured with the mic, stick',
   playAlong: 'by playing along',
   hand: 'set by hand',
   unknown: 'calibrated',
 };
 // the ways of calibrating that measure, and their names in the choice of which to use
-const MEASURED_METHODS = ['playAlong', 'mic'];
-const CALIBRATION_METHOD_NAMES = { playAlong: 'Play along', mic: 'Mic' };
+const MEASURED_METHODS = ['playAlong', 'mic', 'micStick'];
+const CALIBRATION_METHOD_NAMES = {
+  playAlong: 'Play along',
+  mic: 'Mic, drum sound',
+  micStick: 'Mic, stick',
+};
 
 /** The latest result of one way of calibrating, or undefined if it has none. */
 function latestCalibration(method) {

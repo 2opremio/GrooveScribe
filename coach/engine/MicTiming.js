@@ -1,12 +1,16 @@
 /**
  * MicTiming - The system's own delay, measured with a mic: how much later the coach sees a hit
- * than it really happened, against the click as really heard.
+ * than it really happened, against the click as really heard; and how long after the stick the
+ * kit sounds the drum, which is what a player hears and lines up with the click.
  *
  * One recording from the mic holds rounds of the click, played into it from the headphones,
- * and taps of a stick on a pad next to it. Each click and each tap is found in it by its sound.
- * A click found later than the coach thinks it is heard shows the output's error; a tap found
- * against its MIDI message shows the input's delay. The mic's own delay is in both and cancels
- * out, as long as it stays put; clicks before and after the taps show that it did.
+ * taps whose drum sound the mic hears from the headphones, and taps of a stick on a pad next to
+ * it. Each is found in it by its sound. A click found later than the coach thinks it is heard
+ * shows the output's error; a stick found against its MIDI message shows the input's delay; a
+ * drum sound found against its MIDI message, against a stick's, shows the kit's sound delay. The
+ * mic's own delay is in all of them and cancels out: the clicks before and after the taps show
+ * how far it moved, and each tap is measured against it as it was then, assuming it moved
+ * steadily.
  *
  * All times are on the audio context's clock, in ms.
  */
@@ -32,6 +36,9 @@ const REFINE_MS = 15;
 // sounds that must be found, for a result to rest on them
 export const MIN_CLICKS_FOUND_FRACTION = 0.8;
 export const MIN_TAPS_FOUND = 16;
+// The kit can't sound a drum before its stick lands: a drum sound found earlier than the stick
+// by more than the timing's own error was the stick, heard over a quiet drum sound.
+const SOUND_BEFORE_STICK_TOLERANCE_MS = 1;
 // The mic's delay may differ between the two rounds of clicks by at most this: the taps
 // between them are measured against the delay halfway, so a delay moving faster spoils them.
 const MAX_ROUND_SHIFT_MS = 2;
@@ -51,67 +58,103 @@ const MS_PER_S = 1000;
  */
 
 /**
+ * @typedef {{found: number, played: number, lagMs: number|null, spreadMs: number|null}} Found
+ */
+
+/**
  * @param {object} measurement
  * @param {MicRecording} measurement.recording
  * @param {number[][]} measurement.clickRounds - per round, when each click is heard by the
  *   coach's reckoning; one round before the taps, one after
  * @param {number} measurement.clickIntervalMs - time between clicks
- * @param {number[]} measurement.tapsMs - when each tap's MIDI message arrived
+ * @param {number[]} measurement.soundTapsMs - when each MIDI message arrived of the taps whose
+ *   drum sound the mic heard from the headphones
+ * @param {number[]} measurement.stickTapsMs - when each MIDI message arrived of the taps whose
+ *   stick the mic heard on the pad next to it
  * @returns {{
- *   systemMs: number|null,
- *   clicks: {found: number, played: number, lagMs: number|null, spreadMs: number|null}[],
- *   taps: {found: number, played: number, lagMs: number|null, spreadMs: number|null},
+ *   stickMs: number|null,
+ *   soundMs: number|null,
+ *   soundDelayMs: number|null,
+ *   clicks: Found[],
+ *   soundTaps: Found,
+ *   stickTaps: Found,
  *   roundShiftMs: number|null,
  *   precisionMs: number|null,
- *   failure: 'clicks'|'taps'|'moved'|'imprecise'|null,
+ *   failure: 'clicks'|'soundTaps'|'stickTaps'|'stickHeard'|'moved'|'imprecise'|null,
  * }}
- *   systemMs is how much later the coach sees a hit than it happened, against the click as
- *   heard: the calibration offset that takes the system out of the grading
+ *   stickMs is how much later the coach sees a hit than its stick landed, against the click as
+ *   heard: the calibration offset that judges the stick. soundDelayMs is how long after the
+ *   stick the kit sounds the drum, and soundMs the offset that judges the drum's sound.
  */
-export function analyzeMicTiming({ recording, clickRounds, clickIntervalMs, tapsMs }) {
+export function analyzeMicTiming({
+  recording,
+  clickRounds,
+  clickIntervalMs,
+  soundTapsMs,
+  stickTapsMs,
+}) {
   const find = (expectedMs, beforeMs, afterMs) =>
     soundStart(recording, expectedMs - beforeMs, expectedMs + afterMs);
+  // each sound found roughly, then again close to its kind's typical delay
+  const lagsAround = (times, beforeMs, afterMs) => {
+    const rough = lagsOf(times, (ms) => find(ms, beforeMs, afterMs));
+    if (rough.length === 0) return rough;
+    const typical = medianOf(rough.map((f) => f.lagMs));
+    return lagsOf(times, (ms) => find(ms + typical, REFINE_MS, REFINE_MS), typical);
+  };
 
-  const clicks = clickRounds.map((round) =>
-    lagsOf(round, (ms) =>
-      find(ms, CLICK_SEARCH_BEFORE_MS, clickIntervalMs * CLICK_SEARCH_AFTER_FRACTION)
-    )
+  const clickLags = clickRounds.map((round) =>
+    lagsAround(round, CLICK_SEARCH_BEFORE_MS, clickIntervalMs * CLICK_SEARCH_AFTER_FRACTION)
   );
-  const taps = lagsOf(tapsMs, (ms) => find(ms, TAP_SEARCH_MS, TAP_SEARCH_MS));
-  // refine each sound around its kind's typical delay
-  const refined = (lags, times) =>
-    lags.length === 0
-      ? lags
-      : lagsOf(times, (ms) => find(ms + medianOf(lags), REFINE_MS, REFINE_MS), medianOf(lags));
-  const clickLags = clicks.map((lags, i) => refined(lags, clickRounds[i]));
-  const tapLags = refined(taps, tapsMs);
+  const soundLags = lagsAround(soundTapsMs, TAP_SEARCH_MS, TAP_SEARCH_MS);
+  const stickLags = lagsAround(stickTapsMs, TAP_SEARCH_MS, TAP_SEARCH_MS);
 
-  const clickSummaries = clickLags.map((lags, i) => summarize(lags, clickRounds[i].length));
-  const tapSummary = summarize(tapLags, tapsMs.length);
+  const clicks = clickLags.map((found, i) => summarize(found, clickRounds[i].length));
+  const soundTaps = summarize(soundLags, soundTapsMs.length);
+  const stickTaps = summarize(stickLags, stickTapsMs.length);
   const result = {
-    systemMs: null,
-    clicks: clickSummaries,
-    taps: tapSummary,
+    stickMs: null,
+    soundMs: null,
+    soundDelayMs: null,
+    clicks,
+    soundTaps,
+    stickTaps,
     roundShiftMs: null,
     precisionMs: null,
     failure: null,
   };
-  if (clickSummaries.some((c) => c.found < c.played * MIN_CLICKS_FOUND_FRACTION)) {
+  if (clicks.some((c) => c.found < c.played * MIN_CLICKS_FOUND_FRACTION)) {
     return { ...result, failure: 'clicks' };
   }
-  if (tapSummary.found < MIN_TAPS_FOUND) return { ...result, failure: 'taps' };
+  if (soundTaps.found < MIN_TAPS_FOUND) return { ...result, failure: 'soundTaps' };
+  if (stickTaps.found < MIN_TAPS_FOUND) return { ...result, failure: 'stickTaps' };
 
-  const [before, after] = clickSummaries;
+  const [before, after] = clicks;
   result.roundShiftMs = after.lagMs - before.lagMs;
+  // a click's lag when a tap was played, the mic's delay moving steadily from round to round
+  const [beforeMs, afterMs] = clickLags.map((found) => medianOf(found.map((f) => f.atMs)));
+  const clickLagAt = (ms) =>
+    before.lagMs + (result.roundShiftMs * (ms - beforeMs)) / (afterMs - beforeMs);
   // The coach grades a hit by its MIDI time against the click's reckoned time; truly it was the
-  // tap against the click as heard. Through the mic, that difference is the click's lag (the
-  // mic's delay plus the output's error) less the tap's (the mic's delay less MIDI's).
-  result.systemMs = (before.lagMs + after.lagMs) / 2 - tapSummary.lagMs;
+  // stick (or the drum's sound) against the click as heard. Through the mic, that difference is
+  // the click's lag (the mic's delay plus the output's error) less the tap's (the mic's delay
+  // less MIDI's, plus the drum sound's delay for a drum sound).
+  const offsets = (found) => found.map((f) => clickLagAt(f.atMs) - f.lagMs);
+  const stickOffsets = offsets(stickLags);
+  const soundOffsets = offsets(soundLags);
+  result.stickMs = medianOf(stickOffsets);
+  result.soundMs = medianOf(soundOffsets);
+  // a hit whose sound is on the click had its stick land the sound delay earlier
+  result.soundDelayMs = result.stickMs - result.soundMs;
   result.precisionMs = Math.hypot(
-    standardError(clickLags[0]) / 2,
-    standardError(clickLags[1]) / 2,
-    standardError(tapLags)
+    standardError(clickLags[0].map((f) => f.lagMs)) / 2,
+    standardError(clickLags[1].map((f) => f.lagMs)) / 2,
+    standardError(stickOffsets),
+    standardError(soundOffsets)
   );
+  if (result.soundDelayMs < -SOUND_BEFORE_STICK_TOLERANCE_MS) {
+    return { ...result, failure: 'stickHeard' };
+  }
   if (Math.abs(result.roundShiftMs) > MAX_ROUND_SHIFT_MS) return { ...result, failure: 'moved' };
   if (result.precisionMs > MAX_RESULT_SE_MS) return { ...result, failure: 'imprecise' };
   return result;
@@ -122,17 +165,20 @@ export function analyzeMicTiming({ recording, clickRounds, clickIntervalMs, taps
  * @param {number[]} timesMs
  * @param {(ms: number) => number|null} findSound - when the sound expected at ms starts
  * @param {number} [shiftMs] - how far the search was moved from each time
+ * @returns {{atMs: number, lagMs: number}[]}
  */
 function lagsOf(timesMs, findSound, shiftMs = 0) {
-  const lags = [];
-  for (const ms of timesMs) {
-    const soundMs = findSound(ms);
-    if (soundMs !== null) lags.push(soundMs - ms);
+  const found = [];
+  for (const atMs of timesMs) {
+    const soundMs = findSound(atMs);
+    if (soundMs !== null) found.push({ atMs, lagMs: soundMs - atMs });
   }
-  return shiftMs === 0 ? lags : lags.filter((lag) => Math.abs(lag - shiftMs) <= REFINE_MS);
+  return shiftMs === 0 ? found : found.filter((f) => Math.abs(f.lagMs - shiftMs) <= REFINE_MS);
 }
 
-function summarize(lags, played) {
+/** @param {{lagMs: number}[]} found @param {number} played */
+function summarize(found, played) {
+  const lags = found.map((f) => f.lagMs);
   return {
     found: lags.length,
     played,

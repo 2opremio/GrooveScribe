@@ -10,6 +10,13 @@ const OUTPUT_ERROR_MS = 15;
 const MIDI_DELAY_MS = 7;
 // how late the mic hears everything, on the audio clock
 const MIC_DELAY_MS = 40;
+// how long after its stick lands the kit sounds a drum in the headphones
+const KIT_SOUND_DELAY_MS = 6;
+// how loud the mic hears a stick on the pad next to it, one on a pad far from it, and the drum
+// sound from headphones hung on it
+const NEAR_STICK_LEVEL = 0.3;
+const FAR_STICK_LEVEL = 0.02;
+const DRUM_SOUND_LEVEL = 0.5;
 // how much sound the fake mic hands over at a time
 const BLOCK_MS = 100;
 const TAP_EVERY_MS = 1000;
@@ -20,18 +27,18 @@ const MAX_MS = 120000;
 
 /**
  * An AudioContext on performance.now()'s clock that records when each click starts, with a mic
- * that hears those clicks and the taps the test plays, as the room would.
+ * that hears those clicks and the sounds the test makes, as the room would.
  */
 function roomAudioContext({ clickLevel = 0.3 } = {}) {
   const clicks = [];
-  const taps = []; // when each stick hits, on the audio clock (ms)
+  const sounds = []; // what the test makes the mic hear besides the clicks: [{atMs, level}]
   let micNode = null;
   let fedUntilMs = null;
   const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
   const node = () => ({ connect() {}, gain: param() });
   const ctx = {
     clicks,
-    taps,
+    sounds,
     state: 'running',
     sampleRate: SAMPLE_RATE,
     destination: {},
@@ -65,7 +72,7 @@ function roomAudioContext({ clickLevel = 0.3 } = {}) {
           atMs: t * MS_PER_S + OUTPUT_ERROR_MS + MIC_DELAY_MS,
           level: clickLevel,
         })),
-        taps: taps.map((ms) => ({ atMs: ms + MIC_DELAY_MS, level: 0.3 })),
+        taps: sounds.map(({ atMs, level }) => ({ atMs: atMs + MIC_DELAY_MS, level })),
         seed: Math.round(fedUntilMs),
       });
       micNode.port.onmessage({
@@ -125,7 +132,10 @@ describe('calibrating with the mic', { timeout: 30000 }, () => {
   const text = (id) => document.getElementById(id).textContent;
   const shown = (id) => document.getElementById(id).style.display !== 'none';
 
-  const SYSTEM_MS = OUTPUT_ERROR_MS + MIDI_DELAY_MS;
+  // what a hit whose stick is right on the click as heard looks like to the coach
+  const STICK_MS = OUTPUT_ERROR_MS + MIDI_DELAY_MS;
+  // and one whose drum sound is: its stick landed the kit's sound delay earlier
+  const SOUND_MS = STICK_MS - KIT_SOUND_DELAY_MS;
 
   function openDialog() {
     const midiHandler = { onHit: () => {} };
@@ -135,12 +145,29 @@ describe('calibrating with the mic', { timeout: 30000 }, () => {
     return midiHandler;
   }
 
-  /** A stick hit now: the mic hears it, MIDI reports it a little later. */
-  function hit(midiHandler) {
+  /**
+   * A stick hit now: MIDI reports it a little later, and the mic hears the stick, at stickLevel,
+   * and the drum sound from the headphones if they hang on it.
+   */
+  function hit(midiHandler, { stickLevel, drumSoundHeard }) {
     const stickMs = performance.now();
-    ctx.taps.push(stickMs);
+    ctx.sounds.push({ atMs: stickMs, level: stickLevel });
+    if (drumSoundHeard) {
+      ctx.sounds.push({ atMs: stickMs + KIT_SOUND_DELAY_MS, level: DRUM_SOUND_LEVEL });
+    }
     midiHandler.onHit('snare', stickMs + MIDI_DELAY_MS, 100);
   }
+  // a stray hit with the headphones on the mic
+  const strayHit = (midiHandler) =>
+    hit(midiHandler, { stickLevel: NEAR_STICK_LEVEL, drumSoundHeard: true });
+
+  // what the player does at each step that asks for something
+  const PLAYER = {
+    'Tap a pad away from the mic': { tap: { stickLevel: FAR_STICK_LEVEL, drumSoundHeard: true } },
+    'Put the mic next to a pad': 'continue',
+    'Tap the pad next to the mic': { tap: { stickLevel: NEAR_STICK_LEVEL, drumSoundHeard: false } },
+    'Hang the headphones back on the mic': 'continue',
+  };
 
   /**
    * Go through the mic's steps as asked, until it hands over to something else.
@@ -172,48 +199,53 @@ describe('calibrating with the mic', { timeout: 30000 }, () => {
         duringFirstClick();
         clicked = true;
       }
-      if (title === 'Put the mic next to a pad') {
-        document.getElementById('calib-continue-btn').click();
-      }
-      if (title === 'Tap the pad next to the mic' && performance.now() >= nextTapMs) {
-        hit(midiHandler);
+      const asked = PLAYER[title];
+      if (asked === 'continue') document.getElementById('calib-continue-btn').click();
+      if (asked?.tap && performance.now() >= nextTapMs) {
+        hit(midiHandler, asked.tap);
         nextTapMs = performance.now() + TAP_EVERY_MS;
-      }
-      if (title === 'Put the headphones back on the mic') {
-        document.getElementById('calib-continue-btn').click();
       }
     }
     return titles;
   }
 
-  it('measures the kit and the computer alone, and keeps that as the calibration', async () => {
+  it('measures the kit and the computer alone, for the drum sound and for the stick', async () => {
     const midiHandler = openDialog();
     document.getElementById('calib-choose-mic').click();
     await measureWithMic(midiHandler);
 
-    // a hit right on the click as heard looks this much late to the coach
-    expect(text('calib-result-value')).toBe(`+${SYSTEM_MS} ms`);
-    document.getElementById('calib-accept-btn').click();
-    expect(coachState.calibrationOffset).toBe(SYSTEM_MS);
-    expect(coachState.calibrationMethod).toBe('mic');
-    expect(coachState.calibrationHistory.at(-1)).toMatchObject({
-      method: 'mic',
-      offsetMs: SYSTEM_MS,
-    });
+    expect(text('calib-compare-sound')).toBe(`+${SOUND_MS} ms`);
+    expect(text('calib-compare-stick')).toBe(`+${STICK_MS} ms`);
+    expect(text('calib-result-explanation')).toContain(
+      `plays the drum ${KIT_SOUND_DELAY_MS} ms after the stick`
+    );
+    expect(coachState.calibrationHistory.slice(-2)).toMatchObject([
+      { method: 'mic', offsetMs: SOUND_MS },
+      { method: 'micStick', offsetMs: STICK_MS },
+    ]);
+  });
+
+  it('uses whichever of the two the player picks', async () => {
+    const midiHandler = openDialog();
+    document.getElementById('calib-choose-mic').click();
+    await measureWithMic(midiHandler);
+    document.getElementById('calib-accept-stick-btn').click();
+    expect(coachState.calibrationOffset).toBe(STICK_MS);
+    expect(coachState.calibrationMethod).toBe('micStick');
   });
 
   it('is not thrown off by a hit during the click', async () => {
     const midiHandler = openDialog();
     document.getElementById('calib-choose-mic').click();
-    await measureWithMic(midiHandler, () => hit(midiHandler));
-    expect(text('calib-result-value')).toBe(`+${SYSTEM_MS} ms`);
+    await measureWithMic(midiHandler, () => strayHit(midiHandler));
+    expect(text('calib-compare-sound')).toBe(`+${SOUND_MS} ms`);
   });
 
   it('waits for a just-opened mic to settle in before measuring', async () => {
     const midiHandler = openDialog();
     document.getElementById('calib-choose-mic').click();
     await measureWithMic(midiHandler, undefined, () => ctx.skipMic(16));
-    expect(text('calib-result-value')).toBe(`+${SYSTEM_MS} ms`);
+    expect(text('calib-compare-sound')).toBe(`+${SOUND_MS} ms`);
   });
 
   it('says so when the mic drops out partway, instead of measuring across the gap', async () => {
@@ -230,7 +262,7 @@ describe('calibrating with the mic', { timeout: 30000 }, () => {
     document.getElementById('calib-choose-mic').click();
     const titles = await measureWithMic(midiHandler);
     expect(text('calib-result-value')).toBe('No result');
-    expect(titles.has('Put the mic next to a pad')).toBe(false);
+    expect(titles.has('Tap a pad away from the mic')).toBe(false);
   });
 
   it('compares the mic with playing along, and uses either', async () => {
@@ -253,13 +285,18 @@ describe('calibrating with the mic', { timeout: 30000 }, () => {
     }
 
     expect(text('calib-compare-play')).toBe(`+${playedLateMs} ms`);
-    expect(text('calib-compare-mic')).toBe(`+${SYSTEM_MS} ms`);
-    expect(text('calib-result-explanation')).toContain(`${playedLateMs - SYSTEM_MS} ms after`);
+    expect(text('calib-compare-sound')).toBe(`+${SOUND_MS} ms`);
+    expect(text('calib-compare-stick')).toBe(`+${STICK_MS} ms`);
+    expect(text('calib-result-explanation')).toContain(
+      `drum sound landed ${playedLateMs - SOUND_MS} ms after the click (your stick ` +
+        `${playedLateMs - STICK_MS} ms after)`
+    );
     document.getElementById('calib-accept-mic-btn').click();
-    expect(coachState.calibrationOffset).toBe(SYSTEM_MS);
+    expect(coachState.calibrationOffset).toBe(SOUND_MS);
     expect(coachState.calibrationMethod).toBe('mic');
-    expect(coachState.calibrationHistory.slice(-2).map((e) => e.method)).toEqual([
+    expect(coachState.calibrationHistory.slice(-3).map((e) => e.method)).toEqual([
       'mic',
+      'micStick',
       'playAlong',
     ]);
   });
