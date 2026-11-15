@@ -531,10 +531,7 @@ export class CalibrationDialog {
       `stick taps ${stickTaps.found}/${stickTaps.played} (spread ±${stickTaps.spreadMs.toFixed(1)} ms). ` +
       `Result ±${result.precisionMs.toFixed(1)} ms. Mic clock drift ` +
       `${Math.abs(result.roundShiftMs).toFixed(1)} ms` +
-      (result.resyncs === 0
-        ? '.'
-        : `, with ${Math.abs(result.resyncs)} browser resync${Math.abs(result.resyncs) === 1 ? '' : 's'} ` +
-          `of ${result.resyncMs.toFixed(2)} ms: the result may be off by up to that.`);
+      resyncText(result);
     this._results.mic = soundMs;
     this._results.micStick = stickMs;
     coachState.recordCalibration({ method: 'mic', offsetMs: soundMs, details });
@@ -863,6 +860,16 @@ function micFailure(result) {
     default:
       throw new Error(`[CalibrationDialog] unknown mic failure '${result.failure}'`);
   }
+}
+
+/** How many times the browser resynced the mic during a run, and what that may cost. */
+function resyncText({ resyncs, resyncMs }) {
+  if (resyncs === 0) return '.';
+  const count = Math.abs(resyncs);
+  return (
+    `, with ${count} browser resync${count === 1 ? '' : 's'} of ${resyncMs.toFixed(2)} ms: ` +
+    'the result may be off by up to that.'
+  );
 }
 
 /** Where an offset sits on the timing strip, as a CSS left. */
