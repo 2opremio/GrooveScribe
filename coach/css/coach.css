@@ -904,6 +904,243 @@
   fill: #777;
 }
 
+/* the choice between measuring with the mic and playing along: two large buttons */
+#calib-choice {
+  text-align: left;
+}
+
+.calib-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin: 10px 0;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #888;
+  color: #222;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.calib-choice:hover,
+.calib-choice:focus-visible {
+  border-color: var(--highlight-color);
+  box-shadow: inset 4px 0 0 var(--highlight-color);
+}
+
+.calib-choice-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.calib-choice-tag {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: var(--highlight-color);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.calib-choice-text {
+  color: #555;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* the mic's setup: a picture and what to do */
+#calib-mic-diagram {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  margin: 4px auto 8px;
+}
+
+#calib-mic-diagram .calib-pic-pad {
+  fill: #444;
+}
+
+#calib-mic-diagram .calib-pic-mic {
+  fill: #888;
+}
+
+#calib-mic-diagram .calib-pic-stand,
+#calib-mic-diagram .calib-pic-stick {
+  stroke: #444;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+#calib-mic-diagram .calib-pic-stick {
+  stroke: #b8864b;
+}
+
+#calib-mic-diagram .calib-pic-band {
+  fill: none;
+  stroke: #333;
+  stroke-width: 5;
+}
+
+#calib-mic-diagram .calib-pic-cup {
+  fill: #333;
+}
+
+#calib-mic-diagram .calib-pic-cup-on {
+  fill: var(--highlight-color);
+}
+
+#calib-mic-diagram .calib-pic-label {
+  font-size: 12px;
+  fill: #333;
+  text-anchor: middle;
+}
+
+.calib-mic-checklist {
+  margin: 8px 0;
+  padding-left: 22px;
+  text-align: left;
+  line-height: 1.5;
+}
+
+/* the click's volume, set where the mic has to hear it */
+.calib-mic-volume {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0;
+  font-size: 14px;
+}
+
+.calib-mic-volume input {
+  flex: 1;
+}
+
+/* what the mic measured, when comparing it with playing along next */
+#calib-both-lead {
+  padding: 8px 10px;
+  background: #fff;
+  border-left: 4px solid var(--highlight-color);
+  text-align: left;
+}
+
+/* playing along and the mic, side by side */
+.calib-compare {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+}
+
+.calib-compare div {
+  display: flex;
+  flex-direction: column;
+}
+
+.calib-compare span {
+  color: #555;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+#coachCalibrationDialog .coach-dialog-buttons {
+  flex-wrap: wrap;
+}
+
+/* up to four buttons side by side: Cancel, Try again and the two results to choose from */
+#coachCalibrationDialog .coach-btn {
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+#calib-mic .calib-subtle {
+  font-size: 13px;
+  color: #555;
+}
+
+/* the mic's three steps, the current one highlighted */
+.calib-stepper {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  counter-reset: calib-step;
+}
+
+.calib-stepper li {
+  flex: 1;
+  padding: 6px 4px;
+  background: #ddd;
+  color: #555;
+  font-size: 14px;
+  counter-increment: calib-step;
+}
+
+.calib-stepper li::before {
+  content: counter(calib-step) '. ';
+}
+
+.calib-stepper li.calib-step-current {
+  background: var(--highlight-color);
+  color: #fff;
+  font-weight: 700;
+}
+
+.calib-stepper li.calib-step-done {
+  color: #222;
+}
+
+.calib-stepper li.calib-step-done::before {
+  content: '\2713  ';
+}
+
+#calib-mic-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+#calib-mic-hint {
+  min-height: 42px;
+  margin: 4px 0 10px;
+  color: #555;
+  line-height: 1.4;
+}
+
+/* one mark per click or tap: grey until checked, then heard or missed */
+#calib-mic-marks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  min-height: 14px;
+}
+
+.calib-mic-mark {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ccc;
+}
+
+.calib-mic-mark-heard {
+  background: var(--highlight-color);
+}
+
+.calib-mic-mark-missed {
+  background: #e74c3c;
+}
+
+#calib-mic-count {
+  margin: 8px 0 4px;
+  color: #555;
+  font-size: 14px;
+}
+
 /* ---- Drum Map Dialog ---- */
 
 #coachDrumMapDialog {

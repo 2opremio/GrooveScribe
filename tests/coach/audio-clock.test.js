@@ -62,7 +62,9 @@ describe('audio clock', () => {
   });
 
   it('times a new session by the clock as it runs now, not as the last session left it', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'performance'] });
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'],
+    });
     const ctx = driftingContext();
     const clock = new AudioClock(ctx);
     clock.start();
@@ -78,7 +80,9 @@ describe('audio clock', () => {
   });
 
   it('waits for a slow clock to run at real speed before timing sounds by it', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'performance'] });
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'],
+    });
     const ctx = driftingContext();
     ctx.rate = 0.3;
     const clock = new AudioClock(ctx);

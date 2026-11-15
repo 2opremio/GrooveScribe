@@ -136,6 +136,18 @@ export default [
     },
   },
 
+  // AudioWorklet processors run in the audio rendering thread's own global scope.
+  {
+    files: ['coach/**/*.worklet.js'],
+    languageOptions: {
+      globals: {
+        AudioWorkletProcessor: 'readonly',
+        registerProcessor: 'readonly',
+        currentFrame: 'readonly',
+      },
+    },
+  },
+
   // Test suite + build config: modern ESM, Node + Vitest environment. Covers the
   // Vitest suite (tests/), the Playwright suite (tests-e2e/), and *.config.js.
   {

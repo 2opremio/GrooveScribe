@@ -197,7 +197,8 @@ export class SettingsDialog {
     status(
       q('#coach-calib-status'),
       calibrated,
-      `<i class="fa fa-check"></i> ${coachState.calibrationOffset} ms, calibrated`,
+      `<i class="fa fa-check"></i> ${signedMs(coachState.calibrationOffset)} ms, ` +
+        CALIBRATION_METHOD_NAMES[coachState.calibrationMethod ?? 'unknown'],
       'not calibrated'
     );
     const calibBtn = q('#coach-calibrate-btn');
@@ -243,7 +244,9 @@ export class SettingsDialog {
     coachState.tolerance = this._level;
     coachState.reps = parseInt(q('#coach-reps-input').value);
     coachState.countIn = q('#coach-countin-check').checked;
-    coachState.calibrationOffset = parseInt(q('#coach-latency-input').value) || 0;
+    const latencyMs = parseInt(q('#coach-latency-input').value) || 0;
+    if (latencyMs !== coachState.calibrationOffset) coachState.calibrationMethod = 'hand';
+    coachState.calibrationOffset = latencyMs;
     coachState.calibrationHitRule = q('#coach-calib-hit-rule-select').value;
     coachState.minHitVelocity = q('#coach-min-velocity-input').value;
     coachState.showDebugGrid = q('#coach-debug-grid-check').checked;
@@ -311,6 +314,19 @@ function drumMapName() {
 }
 
 /** A row's status line: what's set, or a warning with what's missing. */
+/** A number of ms with its sign, as the calibration shows it: +12, -4, +0. */
+function signedMs(ms) {
+  return `${ms >= 0 ? '+' : ''}${ms}`;
+}
+
+// how the status line says the calibration was set, by calibrationMethod
+const CALIBRATION_METHOD_NAMES = {
+  mic: 'measured with the mic',
+  playAlong: 'by playing along',
+  hand: 'set by hand',
+  unknown: 'calibrated',
+};
+
 function status(el, ok, okHtml, missingText) {
   el.className = ok ? 'coach-settings-ok' : 'coach-settings-missing';
   el.innerHTML = ok ? okHtml : `<i class="fa fa-exclamation-circle"></i> ${missingText}`;

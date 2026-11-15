@@ -7,6 +7,13 @@ import { TOLERANCE_LEVELS } from '../engine/TimingEvaluator.js';
 const VALID_MODES = ['practice', 'performance'];
 // which hits near a calibration click count as the tap: only the loudest, or every hit
 const VALID_CALIBRATION_HIT_RULES = ['loudest', 'every'];
+// How the calibration offset was set: measured with the mic, by playing along, or typed in.
+// null for an offset set before this was kept.
+const VALID_CALIBRATION_METHODS = ['mic', 'playAlong', 'hand', null];
+// the methods that measure, kept in the calibration history
+const MEASURED_CALIBRATION_METHODS = ['mic', 'playAlong'];
+// calibrations kept, newest last: enough to see how the results move over a few weeks
+const CALIBRATION_HISTORY_KEPT = 30;
 const MAX_MIDI_VELOCITY = 127;
 const MAX_PERCENT = 100;
 
@@ -17,6 +24,8 @@ const DEFAULTS = {
   countIn: true,
   calibrationOffset: 0,
   calibrated: false,
+  calibrationMethod: null,
+  calibrationHistory: [], // every finished calibration, accepted or not: {method, offsetMs, at, details}
   drumMapPreset: '_gm',
   drumMapCustom: null,
   drumMapCustomHihatCC: null,
@@ -118,6 +127,49 @@ export class StateManager {
 
   set calibrated(value) {
     this._data.calibrated = Boolean(value);
+  }
+
+  // CalibrationMethod: how calibrationOffset was set (VALID_CALIBRATION_METHODS)
+  get calibrationMethod() {
+    return this._data.calibrationMethod;
+  }
+
+  set calibrationMethod(value) {
+    if (!VALID_CALIBRATION_METHODS.includes(value)) {
+      console.warn(
+        `[State] Invalid calibrationMethod '${value}', keeping '${this._data.calibrationMethod}'`
+      );
+      return;
+    }
+    this._data.calibrationMethod = value;
+  }
+
+  // CalibrationHistory: the latest finished calibrations, oldest first
+  get calibrationHistory() {
+    return this._data.calibrationHistory;
+  }
+
+  set calibrationHistory(value) {
+    const valid = (entry) =>
+      MEASURED_CALIBRATION_METHODS.includes(entry?.method) &&
+      Number.isFinite(entry.offsetMs) &&
+      typeof entry.at === 'string' &&
+      typeof entry.details === 'string';
+    if (!Array.isArray(value) || !value.every(valid)) {
+      console.warn('[State] Invalid calibrationHistory, keeping the current one', value);
+      return;
+    }
+    this._data.calibrationHistory = value.slice(-CALIBRATION_HISTORY_KEPT);
+  }
+
+  /**
+   * Keep a finished calibration in the history, and save.
+   * @param {{method: 'mic'|'playAlong', offsetMs: number, details: string}} calibration
+   */
+  recordCalibration({ method, offsetMs, details }) {
+    const entry = { method, offsetMs, at: new Date().toISOString(), details };
+    this.calibrationHistory = [...this._data.calibrationHistory, entry];
+    this.save();
   }
 
   // ShowDebugGrid property

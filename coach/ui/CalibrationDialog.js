@@ -1,5 +1,8 @@
 import { coachState } from '../state/State.js';
 import { AudioClock } from '../engine/AudioClock.js';
+import { scheduleCalibrationClick } from '../engine/CalibrationClick.js';
+import { drumOSMicName } from '../engine/MicRecorder.js';
+import { MicCalibration } from './MicCalibration.js';
 import {
   CalibrationRun,
   CALIBRATION_RHYTHMS,
@@ -17,12 +20,6 @@ const CLICK_LEAD_S = 0.5;
 const CLICK_QUEUE_INTERVAL_MS = 100;
 // time from pressing Start to the first click, so it isn't queued in the past
 const FIRST_CLICK_DELAY_S = 0.1;
-// Well above a snare's body (roughly 150-400 Hz plus a noise band), so the click doesn't
-// blur into the drum being hit on it.
-const CLICK_FREQ_HZ = 2500;
-const CLICK_DURATION_S = 0.03;
-// gain at 100% metronome volume; just under full scale, so the click can't clip
-const CLICK_MAX_GAIN = 0.9;
 // how loud a click between beats is, against one on the beat, so the 16ths keep their pulse
 const OFF_BEAT_CLICK_GAIN = 0.35;
 const TIMING_STRIP_RANGE_MS = 80; // strip shows +/- this many ms
@@ -50,9 +47,12 @@ const DIAGRAM_BEATS = 4;
  * CalibrationDialog - Measures the player's latency: how far from a click, as heard, their hits
  * arrive.
  *
- * The click plays 16ths at 80 BPM, accented on the beat. The player plays quarter notes, 8ths or
- * 16ths with it; CalibrationRun tells which, waits for the hits to settle, and measures until the
- * result is steady and precise. Only then can it be accepted as calibrationOffset.
+ * Playing along is the way; when DrumOS offers a mic, the system can also be measured alone with
+ * it (MicCalibration), or both in turn and compared, until it's settled which to use. For playing
+ * along the click plays 16ths at 80 BPM, accented on the beat. The
+ * player plays quarter notes, 8ths or 16ths with it; CalibrationRun tells which, waits for the
+ * hits to settle, and measures until the result is steady and precise. Only then can it be
+ * accepted as calibrationOffset.
  */
 export class CalibrationDialog {
   constructor({ midiHandler }) {
@@ -63,6 +63,11 @@ export class CalibrationDialog {
     this._run = null; // the CalibrationRun being played
     this._status = null; // the run's status after the last hit
     this._resultMs = null; // calibration offset from the last completed run
+    this._method = null; // 'playAlong', 'mic' or 'both', the way chosen
+    // results of this calibration, in ms, by method; 'both' fills both and compares them
+    this._results = { playAlong: null, mic: null };
+    this._micName = drumOSMicName();
+    this._mic = null; // the MicCalibration, when there is a mic
     this._firstClickAudioTime = null; // when the run's first click plays, on the audio clock (s)
     this._nextClick = 0; // index of the next click to queue
     this._clickQueueTimer = null;
@@ -86,9 +91,35 @@ export class CalibrationDialog {
     dialog.innerHTML = `
             <h2>Timing calibration</h2>
 
+            <div id="calib-choice">
+                <p>Your kit and the computer each add a little delay. The coach measures it so
+                early and late are judged fairly. Choose how:</p>
+                <button type="button" class="calib-choice" id="calib-choose-play">
+                    <span class="calib-choice-title"><i class="fa fa-music"></i> Play along
+                        <span class="calib-choice-tag">usual</span></span>
+                    <span class="calib-choice-text">Play with a click for about a minute. If you
+                    tend to play a bit early or late, that becomes your “on time”.</span>
+                </button>
+                <button type="button" class="calib-choice" id="calib-choose-mic">
+                    <span class="calib-choice-title"><i class="fa fa-microphone"></i> Measure with the mic</span>
+                    <span class="calib-choice-text">Needs the mic (<span class="calib-mic-name"></span>),
+                    your headphones and a stick. Measures only your kit and computer, so sessions show
+                    how early or late you really play. About a minute.</span>
+                </button>
+                <button type="button" class="calib-choice" id="calib-choose-both">
+                    <span class="calib-choice-title"><i class="fa fa-balance-scale"></i> Both, and compare</span>
+                    <span class="calib-choice-text">The mic, then playing along. Shows how much of
+                    the number is your own feel, then you choose which to use. About two minutes.</span>
+                </button>
+            </div>
+
+            <div id="calib-mic">${MicCalibration.panelHtml()}</div>
+
             <div id="calib-instructions">
-                <p>Your kit and the computer each add a little delay. Play along with a click for
-                about a minute so the coach can measure it and judge early and late fairly.</p>
+                <p id="calib-intro">Your kit and the computer each add a little delay. Play along
+                with a click for about a minute so the coach can measure it and judge early and
+                late fairly.</p>
+                <p id="calib-both-lead"></p>
                 <p>Hit any pad you've mapped (or tap any key) along with the click. Any of these
                 ways works; just keep to the same one the whole time:</p>
                 ${playAlongDiagram()}
@@ -123,9 +154,12 @@ export class CalibrationDialog {
 
             <div class="coach-dialog-buttons">
                 <button class="coach-btn coach-btn-secondary" id="calib-cancel-btn">Cancel</button>
-                <button class="coach-btn coach-btn-primary" id="calib-start-btn">Start</button>
-                <button class="coach-btn coach-btn-primary" id="calib-accept-btn" style="display:none;">Accept</button>
+                <button class="coach-btn coach-btn-secondary" id="calib-back-btn" style="display:none;">Back</button>
                 <button class="coach-btn coach-btn-secondary" id="calib-retry-btn" style="display:none;">Try again</button>
+                <button class="coach-btn coach-btn-primary" id="calib-start-btn">Start</button>
+                <button class="coach-btn coach-btn-primary" id="calib-continue-btn" style="display:none;">Continue</button>
+                <button class="coach-btn coach-btn-secondary" id="calib-accept-mic-btn" style="display:none;">Use mic</button>
+                <button class="coach-btn coach-btn-primary" id="calib-accept-btn" style="display:none;">Accept</button>
             </div>
         `;
 
@@ -133,8 +167,32 @@ export class CalibrationDialog {
     this.container = dialog;
 
     this._q('#calib-cancel-btn').addEventListener('click', () => this._cancel());
-    this._q('#calib-start-btn').addEventListener('click', () => this._start());
-    this._q('#calib-accept-btn').addEventListener('click', () => this._accept());
+    this._q('#calib-back-btn').addEventListener('click', () => this._showPhase('choice'));
+    // the mic's setup comes first both on its own and when comparing
+    this._q('#calib-start-btn').addEventListener('click', () =>
+      this._q('#calib-mic').style.display === 'block' ? this._startMic() : this._start()
+    );
+    this._q('#calib-continue-btn').addEventListener('click', () => this._mic.continue());
+    this._q('#calib-choose-play').addEventListener('click', () => this._choosePlayAlong());
+    this._q('#calib-choose-mic').addEventListener('click', () => this._chooseMic('mic'));
+    this._q('#calib-choose-both').addEventListener('click', () => this._chooseMic('both'));
+    if (this._micName) {
+      this._mic = new MicCalibration({
+        root: this._q('#calib-mic'),
+        micName: this._micName,
+        midiHandler: this.midiHandler,
+        onStep: (step) => this._showMicButtons(step),
+        onResult: (result) => this._micResult(result),
+        onError: (problem, advice) => {
+          this._stop();
+          this._showFailure(problem, `${advice} Or choose Play along instead.`);
+        },
+      });
+    }
+    this._q('#calib-accept-btn').addEventListener('click', () =>
+      this._accept(this._method === 'mic' ? 'mic' : 'playAlong')
+    );
+    this._q('#calib-accept-mic-btn').addEventListener('click', () => this._accept('mic'));
     this._q('#calib-retry-btn').addEventListener('click', () => this._retry());
   }
 
@@ -150,6 +208,38 @@ export class CalibrationDialog {
     this._q('#calib-hit-rule').textContent = rules.join(' ') + ' (Change this in Coach settings.)';
     this._stop();
     this.container.style.display = 'block';
+    if (this._mic) {
+      this._q('.calib-choice .calib-mic-name').textContent = this._micName;
+      this._showPhase('choice');
+    } else {
+      this._choosePlayAlong();
+    }
+  }
+
+  /** @param {'mic'|'both'} method - the mic alone, or the mic and then playing along */
+  _chooseMic(method) {
+    this._method = method;
+    this._results = { playAlong: null, mic: null };
+    this._showPhase('mic');
+    this._mic.show();
+  }
+
+  _choosePlayAlong() {
+    this._method = 'playAlong';
+    this._results = { playAlong: null, mic: null };
+    this._showPlayAlongInstructions();
+  }
+
+  _showPlayAlongInstructions() {
+    // the choice screen has already said what calibrating is for
+    this._q('#calib-intro').style.display = this._mic ? 'none' : '';
+    const lead = this._q('#calib-both-lead');
+    lead.style.display = this._method === 'both' ? '' : 'none';
+    if (this._method === 'both') {
+      lead.innerHTML =
+        `<strong>The mic measured ${signed(this._results.mic)} ms.</strong> ` +
+        'Now put your headphones back on and play along with the click.';
+    }
     this._showPhase('instructions');
   }
 
@@ -162,21 +252,48 @@ export class CalibrationDialog {
     return this.container.querySelector(selector);
   }
 
-  /** @param {'instructions'|'running'|'result'} phase */
+  /** @param {'choice'|'instructions'|'mic'|'running'|'result'} phase */
   _showPhase(phase) {
     const ids = {
+      choice: 'calib-choice',
       instructions: 'calib-instructions',
+      mic: 'calib-mic',
       running: 'calib-progress',
       result: 'calib-result',
     };
     for (const [key, id] of Object.entries(ids)) {
       this._q(`#${id}`).style.display = key === phase ? 'block' : 'none';
     }
-    this._q('#calib-start-btn').style.display = phase === 'instructions' ? '' : 'none';
-    this._q('#calib-retry-btn').style.display = phase === 'result' ? '' : 'none';
-    // Accept appears with a result, and only a finished run has one
-    this._q('#calib-accept-btn').style.display =
-      phase === 'result' && this._resultMs !== null ? '' : 'none';
+    const comparing = phase === 'result' && this._method === 'both' && this._resultMs !== null;
+    this._showButtons({
+      // back to the choice; when comparing, Try again and the two results are enough
+      back: (phase === 'instructions' || phase === 'result') && this._mic !== null && !comparing,
+      start: phase === 'instructions',
+      continue: false,
+      retry: phase === 'result',
+      // Accept appears with a result, and only a finished run has one
+      accept: phase === 'result' && this._resultMs !== null,
+      'accept-mic': comparing,
+    });
+    this._q('#calib-accept-btn').textContent = comparing ? 'Use play along' : 'Accept';
+  }
+
+  /** The buttons for a step of the mic measurement. */
+  _showMicButtons(step) {
+    this._showButtons({
+      back: step === 'setup',
+      start: step === 'setup',
+      continue: step === 'replace',
+      retry: false,
+      accept: false,
+      'accept-mic': false,
+    });
+  }
+
+  _showButtons(shown) {
+    for (const [name, show] of Object.entries(shown)) {
+      this._q(`#calib-${name}-btn`).style.display = show ? '' : 'none';
+    }
   }
 
   // -- Running --
@@ -231,7 +348,11 @@ export class CalibrationDialog {
       const audioTime = this._firstClickAudioTime + this._nextClick * CLICK_INTERVAL_S;
       if (audioTime > until) break;
       const onBeat = this._nextClick % CLICK_NOTES_PER_BEAT === 0;
-      const osc = this._scheduleClickAt(audioTime, onBeat ? 1 : OFF_BEAT_CLICK_GAIN);
+      const osc = scheduleCalibrationClick(
+        this._audioCtx,
+        audioTime,
+        onBeat ? 1 : OFF_BEAT_CLICK_GAIN
+      );
       this._pendingClicks.push(osc);
       osc.onended = () => {
         // a stopped run has already let go of its clicks
@@ -247,6 +368,8 @@ export class CalibrationDialog {
       this._cancel();
       return;
     }
+    // the mic times sticks on a pad; a key's sound isn't one
+    if (this._method === 'mic') return;
     if (e.repeat || NON_TAP_KEYS.has(e.key)) return;
     e.preventDefault();
     // the event's own timestamp is when the key went down; reading the clock here would
@@ -371,22 +494,99 @@ export class CalibrationDialog {
     indicator.classList.add(counted ? 'calib-flash' : 'calib-flash-soft');
   }
 
+  // -- The mic --
+
+  _startMic() {
+    this._resultMs = null;
+    this._ensureAudioContext();
+    document.addEventListener('keydown', this._onKeyDown);
+    this._mic.start(this._audioCtx, this._clock);
+  }
+
+  /** @param {ReturnType<typeof import('../engine/MicTiming.js').analyzeMicTiming>} result */
+  _micResult(result) {
+    this._stop();
+    const failure = micFailure(result);
+    if (failure) {
+      this._showFailure(...failure);
+      return;
+    }
+    const resultMs = Math.round(result.systemMs);
+    const [before, after] = result.clicks;
+    const details =
+      `Clicks heard ${before.found}/${before.played}, then ${after.found}/${after.played}. ` +
+      `Taps heard ${result.taps.found}/${result.taps.played}, spread ±${result.taps.spreadMs.toFixed(1)} ms. ` +
+      `Result ±${result.precisionMs.toFixed(1)} ms. Mic drift ${Math.abs(result.roundShiftMs).toFixed(1)} ms.`;
+    this._results.mic = resultMs;
+    coachState.recordCalibration({ method: 'mic', offsetMs: resultMs, details });
+    if (this._method === 'both') {
+      this._showPlayAlongInstructions();
+      return;
+    }
+    this._resultMs = resultMs;
+    this._showResult(
+      `${signed(resultMs)} ms`,
+      `Your kit and computer shift each hit ${Math.abs(resultMs)} ms ` +
+        `${resultMs < 0 ? 'earlier' : 'later'} than you hear it against the click. Sessions ` +
+        'correct for this, so they show how early or late you really play.',
+      [details, this._previousText(), this._lastOtherText('playAlong')].filter(Boolean).join(' ')
+    );
+  }
+
+  /** The calibration in use now, for comparing a new one with. */
+  _previousText() {
+    return coachState.calibrated ? `Now using ${signed(coachState.calibrationOffset)} ms.` : '';
+  }
+
+  /** The other method's latest result, for comparing. */
+  _lastOtherText(method) {
+    const last = coachState.calibrationHistory.findLast((entry) => entry.method === method);
+    if (!last) return '';
+    const day = new Date(last.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    return `Last ${METHOD_NAMES[method]}: ${signed(last.offsetMs)} ms (${day}).`;
+  }
+
+  /** Both results side by side, and what their difference means. */
+  _showComparison() {
+    const { mic, playAlong } = this._results;
+    const feelMs = playAlong - mic;
+    this._resultMs = playAlong;
+    this._showResult(
+      '',
+      `The mic measured only your kit and computer; playing along adds your feel. ${feelText(feelMs)} ` +
+        'Play along makes playing like you just did count as on time. The mic judges you against ' +
+        'the click itself.',
+      this._previousText()
+    );
+    this._q('#calib-result-value').innerHTML = `
+      <div class="calib-compare">
+        <div><span>Play along</span><strong id="calib-compare-play">${signed(playAlong)} ms</strong></div>
+        <div><span>Mic</span><strong id="calib-compare-mic">${signed(mic)} ms</strong></div>
+      </div>`;
+  }
+
   // -- Finish & results --
 
   _finish(status) {
-    const previousMs = coachState.calibrated ? coachState.calibrationOffset : null;
     this._stop();
-    this._resultMs = Math.round(status.offsetMs);
-    const direction = this._resultMs < 0 ? 'before' : 'after';
-    this._showResult(
-      `${signed(this._resultMs)} ms`,
-      `Your hits reach the coach ${Math.abs(this._resultMs)} ms ${direction} the click: your ` +
-        'kit, the computer and your own feel together. Sessions take this into account, so ' +
-        'playing the way you just did counts as on time.',
+    const resultMs = Math.round(status.offsetMs);
+    const details =
       `${CALIBRATION_RHYTHMS[status.rhythm].label}: median of ${status.measuredTaps} hits, ` +
-        `spread ±${Math.round(status.spreadMs)} ms, ±${status.precisionMs.toFixed(1)} ms ` +
-        'standard error.' +
-        (previousMs === null ? '' : ` Was ${signed(previousMs)} ms.`)
+      `spread ±${Math.round(status.spreadMs)} ms. Result ±${status.precisionMs.toFixed(1)} ms.`;
+    this._results.playAlong = resultMs;
+    coachState.recordCalibration({ method: 'playAlong', offsetMs: resultMs, details });
+    if (this._method === 'both') {
+      this._showComparison();
+      return;
+    }
+    this._resultMs = resultMs;
+    this._showResult(
+      `${signed(resultMs)} ms`,
+      `Your hits land ${Math.abs(resultMs)} ms ${resultMs < 0 ? 'before' : 'after'} the click, ` +
+        'counting your kit, computer and feel. Sessions treat playing like this as on time.',
+      [details, this._previousText(), this._mic ? this._lastOtherText('mic') : '']
+        .filter(Boolean)
+        .join(' ')
     );
   }
 
@@ -433,8 +633,10 @@ export class CalibrationDialog {
     this._showPhase('result');
   }
 
-  _accept() {
-    coachState.calibrationOffset = this._resultMs;
+  /** @param {'playAlong'|'mic'} method - whose result the coach uses */
+  _accept(method) {
+    coachState.calibrationOffset = this._results[method];
+    coachState.calibrationMethod = method;
     coachState.calibrated = true;
     coachState.save();
 
@@ -444,7 +646,11 @@ export class CalibrationDialog {
 
   _retry() {
     this._resultMs = null;
-    this._showPhase('instructions');
+    if (this._method === 'playAlong') this._choosePlayAlong();
+    // comparing, with the mic measured already: only playing along again
+    else if (this._method === 'both' && this._results.mic !== null) {
+      this._showPlayAlongInstructions();
+    } else this._chooseMic(this._method);
   }
 
   _cancel() {
@@ -473,28 +679,9 @@ export class CalibrationDialog {
     }
   }
 
-  /**
-   * @param {number} audioTime - when the click plays, on the audio clock, in s
-   * @param {number} relativeGain - its loudness against a click on the beat
-   */
-  _scheduleClickAt(audioTime, relativeGain) {
-    const ctx = this._audioCtx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = CLICK_FREQ_HZ;
-    osc.type = 'sine';
-    const clickGain = CLICK_MAX_GAIN * relativeGain * (coachState.metronomeVolume / PERCENT);
-    gain.gain.setValueAtTime(clickGain, audioTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioTime + CLICK_DURATION_S);
-    osc.start(audioTime);
-    osc.stop(audioTime + CLICK_DURATION_S);
-    return osc;
-  }
-
   /** Stop the click and stop listening. */
   _stop() {
+    if (this._mic) this._mic.stop();
     clearInterval(this._clickQueueTimer);
     this._clickQueueTimer = null;
     clearInterval(this._hintTimer);
@@ -551,6 +738,59 @@ function playAlongDiagram() {
   return `<svg id="calib-diagram" viewBox="0 0 ${width} ${height}" role="img"
       aria-label="The click plays every 16th note, loud on the beat. Hit on the loud clicks, on every other click, or on every click, which works best.">
       <text x="0" y="17" class="calib-diagram-label">Click</text>${ticks}${rows}</svg>`;
+}
+
+// how each method is named in a sentence
+const METHOD_NAMES = { playAlong: 'play-along calibration', mic: 'mic measurement' };
+// results this close are the same: within what either can measure
+const FEEL_SAME_MS = 3;
+
+/** What the gap between playing along and the mic says about the player's feel. */
+function feelText(feelMs) {
+  if (Math.abs(feelMs) < FEEL_SAME_MS) return 'You played right on the click, so the two agree.';
+  return (
+    `So you played ${Math.abs(feelMs)} ms ${feelMs > 0 ? 'after' : 'before'} the click, ` +
+    'and that’s your own feel.'
+  );
+}
+
+/**
+ * What went wrong with a mic measurement, as [problem, advice], or null if nothing did.
+ * @param {ReturnType<typeof import('../engine/MicTiming.js').analyzeMicTiming>} result
+ */
+function micFailure(result) {
+  const otherWay = 'Or choose Play along instead.';
+  switch (result.failure) {
+    case 'clicks': {
+      const [before, after] = result.clicks;
+      return [
+        `The mic didn't hear enough of the click (${before.found}/${before.played}, then ` +
+          `${after.found}/${after.played}).`,
+        `Hang the headphones right over the mic, or turn the click volume up, and try again. ${otherWay}`,
+      ];
+    }
+    case 'taps':
+      return [
+        `The mic heard ${result.taps.found} of your ${result.taps.played} taps.`,
+        `Put the mic right next to the pad, tap firmly, and try again. ${otherWay}`,
+      ];
+    case 'moved':
+      return [
+        `The mic's own timing shifted by ${Math.abs(result.roundShiftMs).toFixed(1)} ms during ` +
+          'the measurement, so the result can’t be trusted.',
+        `Try again. If it keeps happening, the mic or its USB connection may be unsteady. ${otherWay}`,
+      ];
+    case 'imprecise':
+      return [
+        `The sounds were too uneven to time precisely (±${result.precisionMs.toFixed(1)} ms).`,
+        'Try again in a quiet room. Keep the headphones an arm’s length from the mic while you ' +
+          `tap, and tap firmly. ${otherWay}`,
+      ];
+    case null:
+      return null;
+    default:
+      throw new Error(`[CalibrationDialog] unknown mic failure '${result.failure}'`);
+  }
 }
 
 /** Where an offset sits on the timing strip, as a CSS left. */

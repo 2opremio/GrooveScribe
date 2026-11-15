@@ -37,7 +37,9 @@ function recordingAudioContext() {
 describe('latency calibration', () => {
   let ctx;
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'performance'] });
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'],
+    });
     vi.advanceTimersByTime(1000); // performance.now() and audio time start above 0
     ctx = recordingAudioContext();
     globalThis.AudioContext = function () {
