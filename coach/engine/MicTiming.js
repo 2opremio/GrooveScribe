@@ -51,9 +51,12 @@ export const MIN_TAPS_FOUND = 16;
 // The kit can't sound a drum before its stick lands: a drum sound found earlier than the stick
 // by more than the timing's own error was the stick, heard over a quiet drum sound.
 const SOUND_BEFORE_STICK_TOLERANCE_MS = 1;
-// The mic's delay may differ between the two rounds of clicks by at most this: the taps
-// between them are measured against the delay halfway, so a delay moving faster spoils them.
-const MAX_ROUND_SHIFT_MS = 2;
+// The mic's delay drifts as its clock and the output's run at slightly different rates (about
+// 40 ppm measured on DrumOS, over 2 ms in the minute between the rounds of clicks), which each
+// tap is corrected for, as long as the drift is steady: the slope from round to round must match
+// the rounds' own slopes to within this, over the time between them. A delay that jumped (its
+// buffer reset, say) doesn't.
+const MAX_UNSTEADY_MS = 1;
 // how well the result must be known, one standard error, to be worth taking
 const MAX_RESULT_SE_MS = 1.5;
 // standard error of a median, in standard errors of a mean (sqrt(pi / 2), for normal spread)
@@ -91,6 +94,7 @@ const MS_PER_S = 1000;
  *   soundTaps: Found,
  *   stickTaps: Found,
  *   roundShiftMs: number|null,
+ *   unsteadyMs: number|null,
  *   precisionMs: number|null,
  *   failure: 'clicks'|'soundTaps'|'stickTaps'|'stickHeard'|'moved'|'imprecise'|null,
  * }}
@@ -132,6 +136,7 @@ export function analyzeMicTiming({
     soundTaps,
     stickTaps,
     roundShiftMs: null,
+    unsteadyMs: null,
     precisionMs: null,
     failure: null,
   };
@@ -147,6 +152,9 @@ export function analyzeMicTiming({
   const [beforeMs, afterMs] = clickLags.map((found) => medianOf(found.map((f) => f.atMs)));
   const clickLagAt = (ms) =>
     before.lagMs + (result.roundShiftMs * (ms - beforeMs)) / (afterMs - beforeMs);
+  // how far the drift from round to round strays from the drift within the rounds
+  const withinSlope = (slopeOf(clickLags[0]) + slopeOf(clickLags[1])) / 2;
+  result.unsteadyMs = Math.abs(result.roundShiftMs - withinSlope * (afterMs - beforeMs));
   // The coach grades a hit by its MIDI time against the click's reckoned time; truly it was the
   // stick (or the drum's sound) against the click as heard. Through the mic, that difference is
   // the click's lag (the mic's delay plus the output's error) less the tap's (the mic's delay
@@ -167,7 +175,7 @@ export function analyzeMicTiming({
   if (result.soundDelayMs < -SOUND_BEFORE_STICK_TOLERANCE_MS) {
     return { ...result, failure: 'stickHeard' };
   }
-  if (Math.abs(result.roundShiftMs) > MAX_ROUND_SHIFT_MS) return { ...result, failure: 'moved' };
+  if (result.unsteadyMs > MAX_UNSTEADY_MS) return { ...result, failure: 'moved' };
   if (result.precisionMs > MAX_RESULT_SE_MS) return { ...result, failure: 'imprecise' };
   return result;
 }
@@ -306,6 +314,19 @@ function highPass(samples, sampleRate) {
     y1 = y;
   }
   return out;
+}
+
+/** How fast lags change over the times they were found at, ms per ms (least squares). */
+function slopeOf(found) {
+  const meanAt = found.reduce((sum, f) => sum + f.atMs, 0) / found.length;
+  const meanLag = found.reduce((sum, f) => sum + f.lagMs, 0) / found.length;
+  let covariance = 0;
+  let variance = 0;
+  for (const f of found) {
+    covariance += (f.atMs - meanAt) * (f.lagMs - meanLag);
+    variance += (f.atMs - meanAt) ** 2;
+  }
+  return covariance / variance;
 }
 
 function standardError(lags) {

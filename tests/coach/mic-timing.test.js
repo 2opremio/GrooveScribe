@@ -10,7 +10,7 @@ const TAPS = 20;
  * A measurement in a room where the click comes out of the headphones outputErrorMs later than
  * the coach reckons, MIDI arrives midiDelayMs after a stick hits, the kit sounds the drum
  * soundDelayMs after the stick, and the mic hears everything micDelayMs late, moving steadily to
- * micDelayAfterMs by the second round of clicks. A louder knock knockAfterFirstTapMs after the
+ * micDelayAfterMs by the second round of clicks, and jumping by micJumpMs halfway. A louder knock knockAfterFirstTapMs after the
  * first stick tap, if given.
  */
 function measure({
@@ -26,6 +26,7 @@ function measure({
   knockAfterFirstTapMs = null,
   roomNoise = undefined,
   farStickLevel = 0,
+  micJumpMs = 0,
   seed = 1,
 }) {
   const jitter = normalNoise(seed + 100);
@@ -33,9 +34,11 @@ function measure({
     Array.from({ length: CLICKS }, (_, i) => startMs + i * CLICK_INTERVAL_MS);
   const [firstRoundMs, lastRoundMs] = [1000, 52000];
   const clickRounds = [round(firstRoundMs), round(lastRoundMs)];
-  const micDelayAt = (ms) =>
+  const steadyMicDelayAt = (ms) =>
     micDelayMs +
     ((micDelayAfterMs - micDelayMs) * (ms - firstRoundMs)) / (lastRoundMs - firstRoundMs);
+  const jumpMs = (firstRoundMs + lastRoundMs) / 2;
+  const micDelayAt = (ms) => steadyMicDelayAt(ms) + (ms > jumpMs ? micJumpMs : 0);
   // taps at an uneven pace, the way a player taps without a click: the drum sounds, then sticks
   const taps = (fromMs) =>
     Array.from({ length: TAPS }, (_, i) => fromMs + i * 1000 + 150 * jitter());
@@ -101,19 +104,20 @@ describe('measuring the system with a mic', () => {
       midiDelayMs: 5,
       soundDelayMs: 6,
       micDelayMs: 20,
-      micDelayAfterMs: 21.9,
+      // a mic clock 80 ppm off the output's, twice what DrumOS's drifts
+      micDelayAfterMs: 24,
     });
     expect(result.failure).toBeNull();
     expect(result.stickMs).toBeCloseTo(10 + 5, 0);
     expect(result.soundDelayMs).toBeCloseTo(6, 0);
   });
 
-  it("doesn't give a result when the mic's own delay moved between the rounds of clicks", () => {
+  it("doesn't give a result when the mic's own delay jumped between the rounds of clicks", () => {
     const result = measure({
       outputErrorMs: 10,
       midiDelayMs: 5,
       micDelayMs: 20,
-      micDelayAfterMs: 30,
+      micJumpMs: 2,
     });
     expect(result.failure).toBe('moved');
   });

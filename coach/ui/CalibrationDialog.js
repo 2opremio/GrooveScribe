@@ -529,7 +529,8 @@ export class CalibrationDialog {
       `Clicks heard ${before.found}/${before.played}, then ${after.found}/${after.played}. ` +
       `Drum sounds heard ${soundTaps.found}/${soundTaps.played}, ` +
       `stick taps ${stickTaps.found}/${stickTaps.played} (spread ±${stickTaps.spreadMs.toFixed(1)} ms). ` +
-      `Result ±${result.precisionMs.toFixed(1)} ms. Mic drift ${Math.abs(result.roundShiftMs).toFixed(1)} ms.`;
+      `Result ±${result.precisionMs.toFixed(1)} ms. Mic clock drift ` +
+      `${Math.abs(result.roundShiftMs).toFixed(1)} ms, steady to ${result.unsteadyMs.toFixed(1)} ms.`;
     this._results.mic = soundMs;
     this._results.micStick = stickMs;
     coachState.recordCalibration({ method: 'mic', offsetMs: soundMs, details });
@@ -843,8 +844,8 @@ function micFailure(result) {
       ];
     case 'moved':
       return [
-        `The mic's own timing shifted by ${Math.abs(result.roundShiftMs).toFixed(1)} ms during ` +
-          'the measurement, so the result can’t be trusted.',
+        `The mic's own timing jumped by ${result.unsteadyMs.toFixed(1)} ms during the ` +
+          'measurement, so the result can’t be trusted.',
         `Try again. If it keeps happening, the mic or its USB connection may be unsteady. ${otherWay}`,
       ];
     case 'imprecise':
