@@ -115,15 +115,16 @@ var global_midiReady = new Promise(function (resolve) {
   global_resolveMidiReady = resolve;
 });
 
-// Chromium swaps an audio context's output for a fake clock after 30 s of silence, and swapping
-// back when sound resumes makes the first notes after a pause uneven. A context whose graph holds
-// an analyser fed by a source, with nothing downstream of it (an "automatic pull node"), never
-// gets the fake clock: this keeps a silent one in the player's context.
+// Chromium swaps an audio context's output for a fake clock, which runs slow, once the output
+// has been exactly zero for 30 s, and swapping back when sound resumes makes the first notes after
+// a pause uneven. A constant far below hearing (about -120 dBFS, yet not small enough for the
+// audio thread to flush it to zero) keeps the output from ever being exactly zero.
+var INAUDIBLE_OUTPUT_LEVEL = 1e-6;
 function keepAudioOutputRunning(ctx) {
-  var silence = ctx.createConstantSource();
-  silence.offset.value = 0;
-  silence.connect(ctx.createAnalyser());
-  silence.start();
+  var level = ctx.createConstantSource();
+  level.offset.value = INAUDIBLE_OUTPUT_LEVEL;
+  level.connect(ctx.destination);
+  level.start();
 }
 
 // global constants
