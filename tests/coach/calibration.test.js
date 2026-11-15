@@ -2,9 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CalibrationDialog } from '../../coach/ui/CalibrationDialog.js';
 import { coachState } from '../../coach/state/State.js';
 
-const COUNTDOWN_MS = 4 * 750;
-// the clock waits for a few steady pairings before the clicks are scheduled
+const BEAT_MS = 750;
+const NOTES_PER_BEAT = { quarters: 1, eighths: 2, sixteenths: 4 };
+// the clock waits for a few steady pairings before the click starts
 const CLOCK_SETTLE_MS = 500;
+// longer than any steady run takes
+const MAX_PLAY_MS = 120000;
 
 /** An AudioContext on performance.now()'s clock that records when each click starts. */
 function recordingAudioContext() {
@@ -40,7 +43,7 @@ describe('latency calibration', () => {
     globalThis.AudioContext = function () {
       return ctx;
     };
-    coachState.calibrationHitRule = 'every';
+    coachState.calibrationHitRule = 'loudest';
     coachState.minHitVelocity = 0;
   });
   afterEach(() => {
@@ -49,26 +52,39 @@ describe('latency calibration', () => {
     document.body.innerHTML = '';
   });
 
-  it.each([
-    ['quarters', 40],
-    ['sixteenths', 160],
-  ])('finds a player on %s hitting 12 ms after every click 12 ms late', async (rhythm, taps) => {
-    coachState.calibrationRhythm = rhythm;
+  /** Open the dialog, start, and play `rhythm` `lateMs` after each of its notes until it ends. */
+  async function calibrate(rhythm, lateMs) {
     const midiHandler = { onHit: () => {} };
     const dialog = new CalibrationDialog({ midiHandler });
     dialog.inject();
     dialog.show();
     document.getElementById('calib-start-btn').click();
-    await vi.advanceTimersByTimeAsync(COUNTDOWN_MS + CLOCK_SETTLE_MS);
+    await vi.advanceTimersByTimeAsync(CLOCK_SETTLE_MS);
 
-    // the countdown's clicks are the first four; the run's start after them
-    const runClicks = ctx.clicks.slice(4);
-    for (const clickS of runClicks.slice(0, taps)) {
-      const hitMs = clickS * 1000 + 12;
+    const firstClickMs = ctx.clicks[0] * 1000;
+    const gridMs = BEAT_MS / NOTES_PER_BEAT[rhythm];
+    const running = () => document.getElementById('calib-progress').style.display !== 'none';
+    for (let n = 0; running() && n * gridMs < MAX_PLAY_MS; n++) {
+      const hitMs = firstClickMs + n * gridMs + lateMs;
       await vi.advanceTimersByTimeAsync(Math.max(0, hitMs - performance.now()));
       midiHandler.onHit('snare', hitMs, 100);
     }
+    return {
+      value: document.getElementById('calib-result-value').textContent,
+      canAccept: document.getElementById('calib-accept-btn').style.display !== 'none',
+    };
+  }
 
-    expect(document.getElementById('calib-result-value').textContent).toBe('+12 ms');
+  it.each(['quarters', 'eighths', 'sixteenths'])(
+    'finds a player on %s hitting 12 ms after every note 12 ms late',
+    async (rhythm) => {
+      expect(await calibrate(rhythm, 12)).toEqual({ value: '+12 ms', canAccept: true });
+    }
+  );
+
+  it('keeps the click going on the beat for as long as the player plays', async () => {
+    await calibrate('quarters', 0);
+    const gaps = ctx.clicks.slice(1).map((t, i) => (t - ctx.clicks[i]) * 1000);
+    for (const gap of gaps) expect(gap).toBeCloseTo(BEAT_MS / 4, 6);
   });
 });

@@ -720,38 +720,16 @@
   color: #555;
 }
 
-/* Countdown phase */
-#calib-countdown {
-  padding: 20px 0;
-}
-
-#calib-countdown-number {
-  font-size: 72px;
+/* Running phase */
+#calib-status {
+  font-size: 22px;
   font-weight: 700;
-  color: var(--highlight-color);
-  line-height: 1;
 }
 
-.calib-countdown-pulse {
-  animation: calib-pulse 0.3s ease-out;
-}
-
-@keyframes calib-pulse {
-  0% {
-    transform: scale(1.3);
-    opacity: 0.6;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-/* Tapping phase */
-#calib-beat-counter {
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 10px;
+#calib-hint {
+  color: #555;
+  min-height: 20px;
+  margin: 4px 0 10px;
 }
 
 #calib-beat-indicator {
@@ -761,6 +739,19 @@
   background: #ddd;
   margin: 0 auto 15px;
   transition: background 0.1s;
+}
+
+#calib-beat-indicator.calib-flash-soft {
+  animation: calib-soft-flash 0.2s ease-out;
+}
+
+@keyframes calib-soft-flash {
+  0% {
+    background: #999;
+  }
+  100% {
+    background: #ddd;
+  }
 }
 
 #calib-beat-indicator.calib-flash {
@@ -801,8 +792,8 @@
 .calib-strip-label {
   position: absolute;
   bottom: 2px;
-  font-size: 11px;
-  color: #888;
+  font-size: 13px;
+  color: #555;
   text-transform: uppercase;
 }
 
@@ -817,25 +808,49 @@
 .calib-strip-dot {
   position: absolute;
   top: 50%;
-  width: 8px;
-  height: 8px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   background: var(--highlight-color);
   transform: translate(-50%, -50%);
   opacity: 0.9;
 }
 
-.calib-strip-dot-warmup {
-  background: #ccc;
-  opacity: 0.5;
+/* the running average of the measured hits */
+#calib-strip-median {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #222;
+  transform: translateX(-50%);
 }
 
-/* Running offset display */
-#calib-running-offset {
-  font-size: 20px;
-  font-weight: 700;
-  margin-top: 10px;
-  min-height: 28px;
+.calib-strip-caption {
+  font-size: 12px;
+  color: #555;
+  margin: -4px 0 10px;
+}
+
+#calib-progress-track {
+  height: 8px;
+  background: #e4e4e4;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+#calib-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--highlight-color);
+  transition: width 0.2s;
+}
+
+#calib-details {
+  font-size: 12px;
+  color: #777;
+  min-height: 16px;
+  margin-top: 6px;
 }
 
 /* Result phase */
@@ -850,6 +865,43 @@
   color: #555;
   line-height: 1.4;
   margin-bottom: 10px;
+}
+
+#calib-result-details {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 10px;
+}
+
+/* the play-along picture: the click's notes, and where each way of playing hits */
+#calib-diagram {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  margin: 6px auto 10px;
+}
+
+#calib-diagram .calib-tick {
+  stroke: #aaa;
+  stroke-width: 2;
+}
+
+#calib-diagram .calib-tick-beat {
+  stroke: #333;
+  stroke-width: 3;
+}
+
+#calib-diagram .calib-hit-dot {
+  fill: var(--highlight-color);
+}
+
+#calib-diagram .calib-diagram-label {
+  font-size: 12px;
+  fill: #333;
+}
+
+#calib-diagram .calib-diagram-note {
+  fill: #777;
 }
 
 /* ---- Drum Map Dialog ---- */
