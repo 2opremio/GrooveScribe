@@ -17,6 +17,8 @@ const KIT_SOUND_DELAY_MS = 6;
 const NEAR_STICK_LEVEL = 0.3;
 const FAR_STICK_LEVEL = 0.02;
 const DRUM_SOUND_LEVEL = 0.5;
+// the mic's own sample rate, as the AT2020USB+ runs
+const MIC_SAMPLE_RATE = 44100;
 // how much sound the fake mic hands over at a time
 const BLOCK_MS = 100;
 const TAP_EVERY_MS = 1000;
@@ -132,7 +134,10 @@ describe('calibrating with the mic', { timeout: 30000 }, () => {
           { kind: 'audioinput', label: 'Logitech BRIO (046d:085e)', deviceId: 'cam' },
           { kind: 'audioinput', label: 'AT2020USB+ (0909:001c)', deviceId: 'mic' },
         ],
-        getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }),
+        getUserMedia: async () => {
+          const track = { stop() {}, getSettings: () => ({ sampleRate: MIC_SAMPLE_RATE }) };
+          return { getTracks: () => [track], getAudioTracks: () => [track] };
+        },
       },
     });
     coachState.calibrated = false;

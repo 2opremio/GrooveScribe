@@ -392,6 +392,7 @@ export class MicCalibration {
         clickIntervalMs: CLICK_INTERVAL_MS,
         soundTapsMs: this._taps.soundTaps.map((t) => t.ms),
         stickTapsMs: this._taps.stickTaps.map((t) => t.ms),
+        micSampleRate: this._recorder.micSampleRate,
       });
     } catch (error) {
       console.error('[MicCalibration] could not measure:', error);

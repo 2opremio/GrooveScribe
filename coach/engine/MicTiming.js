@@ -51,12 +51,14 @@ export const MIN_TAPS_FOUND = 16;
 // The kit can't sound a drum before its stick lands: a drum sound found earlier than the stick
 // by more than the timing's own error was the stick, heard over a quiet drum sound.
 const SOUND_BEFORE_STICK_TOLERANCE_MS = 1;
-// The mic's delay drifts as its clock and the output's run at slightly different rates (about
-// 40 ppm measured on DrumOS, over 2 ms in the minute between the rounds of clicks), which each
-// tap is corrected for, as long as the drift is steady: the slope from round to round must match
-// the rounds' own slopes to within this, over the time between them. A delay that jumped (its
-// buffer reset, say) doesn't.
-const MAX_UNSTEADY_MS = 1;
+// The mic's delay drifts as its clock and the output's run at slightly different rates, which
+// each tap is corrected for, and Chromium keeps the two in step by now and then dropping or
+// repeating a chunk of the mic's sound, which moves its delay at once by that chunk (measured on
+// DrumOS: 64 of the mic's samples, every half minute or so). From round to round the delay must
+// move by its drift within the rounds plus whole chunks, to within this; anything else means it
+// jumped some other way, and the taps can't be lined up with it.
+export const MIC_RESYNC_FRAMES = 64;
+const MAX_UNSTEADY_MS = 0.5;
 // how well the result must be known, one standard error, to be worth taking
 const MAX_RESULT_SE_MS = 1.5;
 // standard error of a median, in standard errors of a mean (sqrt(pi / 2), for normal spread)
@@ -86,6 +88,8 @@ const MS_PER_S = 1000;
  *   drum sound the mic heard from the headphones
  * @param {number[]} measurement.stickTapsMs - when each MIDI message arrived of the taps whose
  *   stick the mic heard on the pad next to it
+ * @param {number} measurement.micSampleRate - the mic's own sample rate, which sets how far
+ *   one of Chromium's resyncs moves its delay
  * @returns {{
  *   stickMs: number|null,
  *   soundMs: number|null,
@@ -95,6 +99,8 @@ const MS_PER_S = 1000;
  *   stickTaps: Found,
  *   roundShiftMs: number|null,
  *   unsteadyMs: number|null,
+ *   resyncs: number|null,
+ *   resyncMs: number,
  *   precisionMs: number|null,
  *   failure: 'clicks'|'soundTaps'|'stickTaps'|'stickHeard'|'moved'|'imprecise'|null,
  * }}
@@ -108,7 +114,9 @@ export function analyzeMicTiming({
   clickIntervalMs,
   soundTapsMs,
   stickTapsMs,
+  micSampleRate,
 }) {
+  const resyncMs = (MIC_RESYNC_FRAMES * MS_PER_S) / micSampleRate;
   const find = (expectedMs, beforeMs, afterMs) =>
     soundStart(recording, expectedMs - beforeMs, expectedMs + afterMs);
   // each sound found roughly, then again close to its kind's typical delay
@@ -137,6 +145,8 @@ export function analyzeMicTiming({
     stickTaps,
     roundShiftMs: null,
     unsteadyMs: null,
+    resyncs: null,
+    resyncMs,
     precisionMs: null,
     failure: null,
   };
@@ -154,7 +164,9 @@ export function analyzeMicTiming({
     before.lagMs + (result.roundShiftMs * (ms - beforeMs)) / (afterMs - beforeMs);
   // how far the drift from round to round strays from the drift within the rounds
   const withinSlope = (slopeOf(clickLags[0]) + slopeOf(clickLags[1])) / 2;
-  result.unsteadyMs = Math.abs(result.roundShiftMs - withinSlope * (afterMs - beforeMs));
+  const jumpedMs = result.roundShiftMs - withinSlope * (afterMs - beforeMs);
+  result.resyncs = Math.round(jumpedMs / resyncMs);
+  result.unsteadyMs = Math.abs(jumpedMs - result.resyncs * resyncMs);
   // The coach grades a hit by its MIDI time against the click's reckoned time; truly it was the
   // stick (or the drum's sound) against the click as heard. Through the mic, that difference is
   // the click's lag (the mic's delay plus the output's error) less the tap's (the mic's delay

@@ -63,6 +63,7 @@ export class MicRecorder {
     this._source = null;
     this._node = null;
     this._stream = null;
+    this.micSampleRate = null; // the mic's own rate, before the context resamples it
   }
 
   /**
@@ -76,6 +77,10 @@ export class MicRecorder {
       contextsWithWorklet.add(ctx);
     }
     this._stream = stream;
+    this.micSampleRate = stream.getAudioTracks()[0].getSettings().sampleRate;
+    if (!this.micSampleRate) {
+      throw new Error('[MicRecorder] the mic reports no sample rate of its own');
+    }
     this._source = ctx.createMediaStreamSource(stream);
     // no outputs: the mic is only listened to, never played
     this._node = new AudioWorkletNode(ctx, PROCESSOR_NAME, { numberOfOutputs: 0 });

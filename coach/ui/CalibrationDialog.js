@@ -530,7 +530,11 @@ export class CalibrationDialog {
       `Drum sounds heard ${soundTaps.found}/${soundTaps.played}, ` +
       `stick taps ${stickTaps.found}/${stickTaps.played} (spread ±${stickTaps.spreadMs.toFixed(1)} ms). ` +
       `Result ±${result.precisionMs.toFixed(1)} ms. Mic clock drift ` +
-      `${Math.abs(result.roundShiftMs).toFixed(1)} ms, steady to ${result.unsteadyMs.toFixed(1)} ms.`;
+      `${Math.abs(result.roundShiftMs).toFixed(1)} ms` +
+      (result.resyncs === 0
+        ? '.'
+        : `, with ${Math.abs(result.resyncs)} browser resync${Math.abs(result.resyncs) === 1 ? '' : 's'} ` +
+          `of ${result.resyncMs.toFixed(2)} ms: the result may be off by up to that.`);
     this._results.mic = soundMs;
     this._results.micStick = stickMs;
     coachState.recordCalibration({ method: 'mic', offsetMs: soundMs, details });

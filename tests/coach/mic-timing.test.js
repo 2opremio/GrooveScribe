@@ -5,6 +5,9 @@ import { roomSound, normalNoise, SAMPLE_RATE } from './helpers/micRoom.js';
 const CLICK_INTERVAL_MS = 375;
 const CLICKS = 24;
 const TAPS = 20;
+// the mic's own rate: one of the browser's resyncs of it moves its delay by 64 samples of it
+const MIC_SAMPLE_RATE = 44100;
+const RESYNC_MS = (64 * 1000) / MIC_SAMPLE_RATE;
 
 /**
  * A measurement in a room where the click comes out of the headphones outputErrorMs later than
@@ -75,6 +78,7 @@ function measure({
     clickIntervalMs: CLICK_INTERVAL_MS,
     soundTapsMs: midi(soundSticksMs),
     stickTapsMs: midi(nearSticksMs),
+    micSampleRate: MIC_SAMPLE_RATE,
   });
 }
 
@@ -110,6 +114,19 @@ describe('measuring the system with a mic', () => {
     expect(result.failure).toBeNull();
     expect(result.stickMs).toBeCloseTo(10 + 5, 0);
     expect(result.soundDelayMs).toBeCloseTo(6, 0);
+  });
+
+  it('takes the browser resyncing the mic between the rounds of clicks, and says so', () => {
+    const result = measure({
+      outputErrorMs: 10,
+      midiDelayMs: 5,
+      micDelayMs: 20,
+      micJumpMs: 2 * RESYNC_MS,
+    });
+    expect(result.failure).toBeNull();
+    expect(result.resyncs).toBe(2);
+    // the jump came between the two tap steps: each is measured within a resync of the truth
+    expect(Math.abs(result.stickMs - 15)).toBeLessThan(RESYNC_MS);
   });
 
   it("doesn't give a result when the mic's own delay jumped between the rounds of clicks", () => {
