@@ -85,7 +85,8 @@ function roomAudioContext({ clickLevel = 0.3 } = {}) {
   return ctx;
 }
 
-describe('calibrating with the mic', () => {
+// a run plays a minute of simulated room sound, listened to as the dialog would
+describe('calibrating with the mic', { timeout: 30000 }, () => {
   let ctx;
   beforeEach(() => {
     vi.useFakeTimers({
@@ -171,11 +172,14 @@ describe('calibrating with the mic', () => {
         duringFirstClick();
         clicked = true;
       }
-      if (title === 'Move the headphones away, then tap' && performance.now() >= nextTapMs) {
+      if (title === 'Put the mic next to a pad') {
+        document.getElementById('calib-continue-btn').click();
+      }
+      if (title === 'Tap the pad next to the mic' && performance.now() >= nextTapMs) {
         hit(midiHandler);
         nextTapMs = performance.now() + TAP_EVERY_MS;
       }
-      if (title === 'Hang the headphones back on the mic') {
+      if (title === 'Put the headphones back on the mic') {
         document.getElementById('calib-continue-btn').click();
       }
     }
@@ -226,7 +230,7 @@ describe('calibrating with the mic', () => {
     document.getElementById('calib-choose-mic').click();
     const titles = await measureWithMic(midiHandler);
     expect(text('calib-result-value')).toBe('No result');
-    expect(titles.has('Move the headphones away, then tap')).toBe(false);
+    expect(titles.has('Put the mic next to a pad')).toBe(false);
   });
 
   it('compares the mic with playing along, and uses either', async () => {

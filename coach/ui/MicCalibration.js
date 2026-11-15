@@ -4,6 +4,8 @@ import { MicRecorder, openMic } from '../engine/MicRecorder.js';
 import {
   analyzeMicTiming,
   soundStart,
+  loudness,
+  LOUD_ENOUGH,
   SOUND_CONTEXT_MS,
   MIN_CLICKS_FOUND_FRACTION,
 } from '../engine/MicTiming.js';
@@ -39,7 +41,13 @@ const TAP_MESSAGE_MS = 3000;
 const MARKS = { null: 'waiting', true: 'heard', false: 'missed' };
 
 /** The steps, in order; the stepper shows the three that measure. */
-const STEPS = ['setup', 'clicks1', 'taps', 'replace', 'clicks2', 'analyzing'];
+const STEPS = ['setup', 'clicks1', 'toPad', 'taps', 'replace', 'clicks2', 'analyzing'];
+// the steps whose sounds the level meter shows
+const METER_STEPS = ['clicks1', 'taps', 'clicks2'];
+// the meter shows the loudest sound in this much of the latest recording
+const METER_WINDOW_MS = 300;
+// how far above the background a sound fills the meter
+const METER_FULL = 200;
 
 /**
  * MicCalibration - Measures the system's own delay with the mic DrumOS records: the click as it
@@ -87,8 +95,8 @@ export class MicCalibration {
         <ol class="calib-mic-checklist">
           <li>Take off your headphones and hang them on the mic, the ear cups either side of it.
           From here on, follow the screen.</li>
-          <li>Put the mic right next to a pad you can reach.</li>
           <li>Have a stick ready. Keep the kit quiet until it asks you to tap.</li>
+          <li>Halfway through, it asks you to put the mic next to a pad, then back.</li>
         </ol>
         <label class="calib-mic-volume">Click volume
           <input type="range" id="calib-mic-volume" min="0" max="100" step="5"></label>
@@ -98,11 +106,15 @@ export class MicCalibration {
       <div id="calib-mic-running">
         <ol class="calib-stepper">
           <li data-steps="clicks1">Click</li>
-          <li data-steps="taps replace">Taps</li>
+          <li data-steps="toPad taps replace">Taps</li>
           <li data-steps="clicks2 analyzing">Click again</li>
         </ol>
         <div id="calib-mic-title" aria-live="polite"></div>
         <div id="calib-mic-hint"></div>
+        <div id="calib-mic-meter" aria-hidden="true">
+          <div id="calib-mic-meter-fill"></div>
+          <div id="calib-mic-meter-line"></div>
+        </div>
         <div id="calib-mic-marks" aria-hidden="true"></div>
         <div id="calib-mic-count"></div>
       </div>`;
@@ -152,9 +164,11 @@ export class MicCalibration {
     this._playRound('clicks1');
   }
 
-  /** After the ear cup is back on the mic: the second round of clicks. */
+  /** The player is ready: the mic is by a pad, for the taps, or back under the headphones. */
   continue() {
-    this._playRound('clicks2');
+    if (this._step === 'toPad') this._setStep('taps');
+    else if (this._step === 'replace') this._playRound('clicks2');
+    else throw new Error(`[MicCalibration] nothing to continue at step '${this._step}'`);
   }
 
   /** Stop the clicks, the mic and listening to the kit. */
@@ -243,7 +257,27 @@ export class MicCalibration {
     for (const tap of this._taps) {
       if (listen(tap, TAP_LISTEN_MS, TAP_LISTEN_MS) && !tap.heard) this._onTapMissed(tap);
     }
+    this._showLevel(until);
     this._advance();
+  }
+
+  /** How loud the latest sound was, against how loud a sound must be to count. */
+  _showLevel(untilMs) {
+    const meter = this.root.querySelector('#calib-mic-meter');
+    meter.style.display = METER_STEPS.includes(this._step) ? '' : 'none';
+    if (!METER_STEPS.includes(this._step)) return;
+    const fromMs = untilMs - METER_WINDOW_MS;
+    const ratio = loudness(
+      this._recorder.recording(fromMs - SOUND_CONTEXT_MS, untilMs),
+      fromMs,
+      untilMs
+    );
+    const fill = ratio === null ? 0 : meterFraction(ratio);
+    const fillBar = this.root.querySelector('#calib-mic-meter-fill');
+    fillBar.style.width = `${fill * 100}%`;
+    fillBar.classList.toggle('calib-mic-meter-enough', ratio !== null && ratio > LOUD_ENOUGH);
+    this.root.querySelector('#calib-mic-meter-line').style.left =
+      `${meterFraction(LOUD_ENOUGH) * 100}%`;
   }
 
   /** Move on, or stop, by what has been heard so far. */
@@ -259,7 +293,7 @@ export class MicCalibration {
     } else if (roundDone && this._step === 'clicks1') {
       this._rounds.push(this._clicks.map((c) => c.ms));
       this._clicks = [];
-      this._setStep('taps');
+      this._setStep('toPad');
     } else if (roundDone && this._step === 'clicks2') {
       this._rounds.push(this._clicks.map((c) => c.ms));
       this._finish();
@@ -367,19 +401,26 @@ export class MicCalibration {
           marks: marksOf(this._clicks, CLICKS_PER_ROUND),
         };
       }
+      case 'toPad':
+        return {
+          title: 'Put the mic next to a pad',
+          hint:
+            'Lift the headphones off and set them down away from the mic. Put the mic right ' +
+            'next to a pad: the closer, the more exact (every 34 cm adds 1 ms). Then press Continue.',
+          count: '',
+          marks: [],
+        };
       case 'taps':
         return {
-          title: 'Move the headphones away, then tap',
-          hint:
-            'Put the headphones an arm’s length from the mic. Tap the pad next to the mic, ' +
-            'about once a second.',
+          title: 'Tap the pad next to the mic',
+          hint: 'Firmly, about once a second. A tap counts when the meter passes the line.',
           count: `${heard(this._taps)} of ${TAPS_WANTED} taps heard`,
           marks: marksOf(this._taps, tapMarks),
         };
       case 'replace':
         return {
-          title: 'Hang the headphones back on the mic',
-          hint: 'Then press Continue, and keep your hands off the kit.',
+          title: 'Put the headphones back on the mic',
+          hint: 'Bring the mic back, hang the headphones on it, then press Continue. Hands off the kit.',
           count: `${heard(this._taps)} of ${TAPS_WANTED} taps heard`,
           marks: marksOf(this._taps, tapMarks),
         };
@@ -391,7 +432,12 @@ export class MicCalibration {
   }
 }
 
-/** The setup as a picture: the headphones hung on the mic, the mic beside a pad, a stick. */
+/** The setup as a picture: the headphones hung on the mic, and the pad and stick for later. */
+/** Where a loudness sits on the meter, from 0 to 1: on a log scale, as loudness is heard. */
+function meterFraction(ratio) {
+  return Math.max(0, Math.min(1, Math.log(ratio) / Math.log(METER_FULL)));
+}
+
 function micSetupDiagram() {
   return `<svg id="calib-mic-diagram" viewBox="0 0 320 150" role="img"
       aria-label="Headphones hung on the mic, an ear cup either side of it, and the mic standing right next to a drum pad.">

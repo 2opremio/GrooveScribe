@@ -15,7 +15,7 @@
 const HIGH_PASS_HZ = 1000;
 // A sound is only taken when it peaks this many times above the background: the typical level
 // over the SOUND_CONTEXT_MS before it, mostly quiet, which also lets the high-pass settle.
-const NOISE_MARGIN = 8;
+export const LOUD_ENOUGH = 8;
 export const SOUND_CONTEXT_MS = 500;
 // A sound starts where it first reaches this fraction of its peak: past any background, and
 // early on the steep rise of a click or a stick, so loud and soft ones are timed alike.
@@ -150,24 +150,47 @@ function summarize(lags, played) {
  * @returns {number|null}
  */
 export function soundStart(recording, fromMs, toMs) {
-  const toIndex = (ms) => Math.round(((ms - recording.startMs) * recording.sampleRate) / MS_PER_S);
-  const segmentStart = Math.max(0, toIndex(fromMs - SOUND_CONTEXT_MS));
-  const from = Math.max(segmentStart, toIndex(fromMs));
-  const to = Math.min(recording.samples.length, toIndex(toMs));
-  if (to <= from) return null;
-  const signal = highPass(recording.samples.subarray(segmentStart, to), recording.sampleRate);
-  const background = medianOf(Array.from(signal, Math.abs));
-  let peak = 0;
-  for (let i = from - segmentStart; i < signal.length; i++) {
-    peak = Math.max(peak, Math.abs(signal[i]));
-  }
-  if (peak <= background * NOISE_MARGIN) return null;
-  for (let i = from - segmentStart; i < signal.length; i++) {
+  const window = loudestIn(recording, fromMs, toMs);
+  if (window === null || window.peak <= window.background * LOUD_ENOUGH) return null;
+  const { signal, from, segmentStart, peak } = window;
+  for (let i = from; i < signal.length; i++) {
     if (Math.abs(signal[i]) >= peak * ONSET_FRACTION) {
       return recording.startMs + ((segmentStart + i) * MS_PER_S) / recording.sampleRate;
     }
   }
   throw new Error('[MicTiming] a peak was found but no sample reached a fraction of it');
+}
+
+/**
+ * How far the loudest sound between fromMs and toMs stands above the background just before it,
+ * as a ratio: soundStart takes sounds of at least LOUD_ENOUGH.
+ * @param {MicRecording} recording
+ * @param {number} fromMs
+ * @param {number} toMs
+ * @returns {number|null} null when the recording has nothing there yet
+ */
+export function loudness(recording, fromMs, toMs) {
+  const window = loudestIn(recording, fromMs, toMs);
+  return window === null ? null : window.peak / window.background;
+}
+
+/**
+ * The loudest point between fromMs and toMs and the background before it, on the recording
+ * filtered as sounds are timed, from SOUND_CONTEXT_MS before fromMs; null if there is nothing.
+ */
+function loudestIn(recording, fromMs, toMs) {
+  const toIndex = (ms) => Math.round(((ms - recording.startMs) * recording.sampleRate) / MS_PER_S);
+  const segmentStart = Math.max(0, toIndex(fromMs - SOUND_CONTEXT_MS));
+  const from = Math.max(segmentStart, toIndex(fromMs)) - segmentStart;
+  const signal = highPass(
+    recording.samples.subarray(segmentStart, Math.min(recording.samples.length, toIndex(toMs))),
+    recording.sampleRate
+  );
+  if (signal.length <= from) return null;
+  const background = medianOf(Array.from(signal, Math.abs));
+  let peak = 0;
+  for (let i = from; i < signal.length; i++) peak = Math.max(peak, Math.abs(signal[i]));
+  return { signal, from, segmentStart, peak, background };
 }
 
 /** A second-order Butterworth high-pass at HIGH_PASS_HZ (the audio EQ cookbook's). */

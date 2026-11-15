@@ -283,7 +283,7 @@ export class CalibrationDialog {
     this._showButtons({
       back: step === 'setup',
       start: step === 'setup',
-      continue: step === 'replace',
+      continue: step === 'toPad' || step === 'replace',
       retry: false,
       accept: false,
       'accept-mic': false,
