@@ -7,6 +7,8 @@ import { TOLERANCE_LEVELS } from '../engine/TimingEvaluator.js';
 const VALID_MODES = ['practice', 'performance'];
 // which hits near a calibration click count as the tap: only the loudest, or every hit
 const VALID_CALIBRATION_HIT_RULES = ['loudest', 'every'];
+// what the calibration click plays, and the player with it: quarter notes, or 16th notes
+const VALID_CALIBRATION_RHYTHMS = ['quarters', 'sixteenths'];
 const MAX_MIDI_VELOCITY = 127;
 const MAX_PERCENT = 100;
 
@@ -26,6 +28,7 @@ const DEFAULTS = {
   metronomeVolume: 100,
   startWithSolo: true,
   calibrationHitRule: 'loudest',
+  calibrationRhythm: 'quarters',
   minHitVelocity: 0, // 0 = no hit is ignored for being soft
   gradeUnwrittenHihatFoot: false, // hi-hat foot hits count in grooves that have no hi-hat foot
   autoBpm: false, // in practice mode, raise the tempo after passes that meet the goal
@@ -154,6 +157,21 @@ export class StateManager {
       return;
     }
     this._data.calibrationHitRule = value;
+  }
+
+  // CalibrationRhythm: the notes the calibration click plays, and the player plays with it
+  get calibrationRhythm() {
+    return this._data.calibrationRhythm;
+  }
+
+  set calibrationRhythm(value) {
+    if (!VALID_CALIBRATION_RHYTHMS.includes(value)) {
+      console.warn(
+        `[State] Invalid calibrationRhythm '${value}', keeping '${this._data.calibrationRhythm}'`
+      );
+      return;
+    }
+    this._data.calibrationRhythm = value;
   }
 
   // MinHitVelocity: hits softer than this (MIDI velocity 0-127) are ignored, in sessions

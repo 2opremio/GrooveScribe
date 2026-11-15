@@ -84,6 +84,15 @@ export class SettingsDialog {
               <span class="coach-settings-label">Latency<small id="coach-calib-status"></small></span>
               <button type="button" class="coach-settings-btn" id="coach-calibrate-btn"></button>
             </div>
+            ${row(
+              'Click on',
+              'what you play while calibrating',
+              `<select id="coach-calib-rhythm-select">
+                <option value="quarters">Quarter notes</option>
+                <option value="sixteenths">16th notes</option>
+              </select>`,
+              'coach-calib-rhythm-select'
+            )}
             <div class="coach-settings-advanced">
               ${row('Latency by hand', 'calibrating sets it', number('coach-latency-input', 'ms', 'step="1"'), 'coach-latency-input')}
               ${row(
@@ -162,6 +171,7 @@ export class SettingsDialog {
     q('#coach-countin-check').checked = coachState.countIn;
     q('#coach-latency-input').value = coachState.calibrationOffset;
     q('#coach-calib-hit-rule-select').value = coachState.calibrationHitRule;
+    q('#coach-calib-rhythm-select').value = coachState.calibrationRhythm;
     q('#coach-min-velocity-input').value = coachState.minHitVelocity;
     q('#coach-debug-grid-check').checked = coachState.showDebugGrid;
     q('#coach-start-solo-check').checked = coachState.startWithSolo;
@@ -245,6 +255,7 @@ export class SettingsDialog {
     coachState.countIn = q('#coach-countin-check').checked;
     coachState.calibrationOffset = parseInt(q('#coach-latency-input').value) || 0;
     coachState.calibrationHitRule = q('#coach-calib-hit-rule-select').value;
+    coachState.calibrationRhythm = q('#coach-calib-rhythm-select').value;
     coachState.minHitVelocity = q('#coach-min-velocity-input').value;
     coachState.showDebugGrid = q('#coach-debug-grid-check').checked;
     coachState.startWithSolo = q('#coach-start-solo-check').checked;
