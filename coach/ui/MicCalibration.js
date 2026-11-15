@@ -73,6 +73,9 @@ const METER_STEPS = ['clicks1', 'soundTaps', 'stickTaps', 'clicks2'];
 const METER_WINDOW_MS = 300;
 // how far above the background a sound fills the meter
 const METER_FULL = 200;
+// The meter stays empty up to this many times the room's noise: the noise's own peaks wander
+// around its level and rarely reach twice it, so the noise alone never shows.
+const METER_EMPTY = 2;
 
 /**
  * MicCalibration - Measures the system's own delay with the mic DrumOS records: the click as it
@@ -503,7 +506,8 @@ export class MicCalibration {
 
 /** Where a loudness sits on the meter, from 0 to 1: on a log scale, as loudness is heard. */
 function meterFraction(ratio) {
-  return Math.max(0, Math.min(1, Math.log(ratio) / Math.log(METER_FULL)));
+  const fraction = Math.log(ratio / METER_EMPTY) / Math.log(METER_FULL / METER_EMPTY);
+  return Math.max(0, Math.min(1, fraction));
 }
 
 /** The setup as a picture: the headphones hung on the mic, and the pad and stick for later. */
