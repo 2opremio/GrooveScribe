@@ -89,9 +89,11 @@ export class CalibrationDialog {
             <div id="calib-instructions">
                 <p>Your kit and the computer each add a little delay. Play along with a click for
                 about a minute so the coach can measure it and judge early and late fairly.</p>
-                <p>Hit along with the click on any pad you've mapped, or tap any key. Pick one way
-                and keep it up:</p>
+                <p>Hit any pad you've mapped (or tap any key) along with the click. Any of these
+                ways works; just keep to the same one the whole time:</p>
                 ${playAlongDiagram()}
+                <p><strong>Hitting on every click works best</strong> and finishes soonest. New to
+                this? Hitting only on the loud clicks is fine too, it just takes a little longer.</p>
                 <p class="calib-subtle">It finishes by itself once your hits are steady. Being a
                 little early or late is fine, as long as you stay put.</p>
                 <p class="calib-subtle" id="calib-hit-rule"></p>
@@ -519,12 +521,12 @@ export class CalibrationDialog {
  */
 function playAlongDiagram() {
   const ways = [
-    ['Loud clicks only', 'easiest', CALIBRATION_RHYTHMS.quarters.notesPerBeat],
-    ['Every other click', '', CALIBRATION_RHYTHMS.eighths.notesPerBeat],
-    ['Every click', 'quickest', CALIBRATION_RHYTHMS.sixteenths.notesPerBeat],
+    ['Loud clicks only', 'quarter notes', CALIBRATION_RHYTHMS.quarters.notesPerBeat],
+    ['Every other click', '8th notes', CALIBRATION_RHYTHMS.eighths.notesPerBeat],
+    ['Every click', '16th notes, best', CALIBRATION_RHYTHMS.sixteenths.notesPerBeat],
   ];
-  const left = 150;
-  const step = 16;
+  const left = 200;
+  const step = 15;
   const rowHeight = 26;
   const notes = CLICK_NOTES_PER_BEAT * DIAGRAM_BEATS;
   const x = (i) => left + i * step + step / 2;
@@ -540,14 +542,14 @@ function playAlongDiagram() {
         .filter((i) => i % (CLICK_NOTES_PER_BEAT / perBeat) === 0)
         .map((i) => `<circle cx="${x(i)}" cy="${y}" r="4.5" class="calib-hit-dot"/>`)
         .join('');
-      const label = note ? `${name} <tspan class="calib-diagram-note">(${note})</tspan>` : name;
+      const label = `${name} <tspan class="calib-diagram-note">(${note})</tspan>`;
       return `<text x="0" y="${y + 4}" class="calib-diagram-label">${label}</text>${dots}`;
     })
     .join('');
   const height = 22 + rowHeight * ways.length + 4;
   const width = left + notes * step;
   return `<svg id="calib-diagram" viewBox="0 0 ${width} ${height}" role="img"
-      aria-label="The click plays every 16th note, loud on the beat. Hit on the loud clicks, on every other click, or on every click.">
+      aria-label="The click plays every 16th note, loud on the beat. Hit on the loud clicks, on every other click, or on every click, which works best.">
       <text x="0" y="17" class="calib-diagram-label">Click</text>${ticks}${rows}</svg>`;
 }
 
