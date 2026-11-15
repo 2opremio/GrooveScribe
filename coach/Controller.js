@@ -986,11 +986,16 @@ export class Controller {
     if ((needsCalibration || needsMapping) && !coachState._hasSeenSetupPrompt) {
       let message;
       if (needsCalibration && needsMapping) {
-        message = "You haven't configured your drum mapping or calibrated latency yet.";
+        message =
+          "Before your first session, set up two things: map your kit's pads so the coach " +
+          'hears every drum, and run the one-minute timing calibration so early and late are ' +
+          'judged fairly.';
       } else if (needsMapping) {
-        message = "You haven't configured your drum mapping yet.";
+        message = "Before your first session, map your kit's pads so the coach hears every drum.";
       } else {
-        message = "You haven't calibrated latency yet.";
+        message =
+          'Before your first session, run the one-minute timing calibration so early and late ' +
+          'are judged fairly.';
       }
       this._showSetupPrompt(message);
       return;
@@ -1040,7 +1045,7 @@ export class Controller {
                 <p id="coach-setup-message"></p>
                 <div class="coach-dialog-buttons">
                     <button class="coach-btn coach-btn-secondary" id="coach-setup-skip">Skip</button>
-                    <button class="coach-btn coach-btn-primary" id="coach-setup-configure">Configure</button>
+                    <button class="coach-btn coach-btn-primary" id="coach-setup-configure">Set up now</button>
                 </div>
             `;
       document.body.appendChild(prompt);
@@ -1057,7 +1062,7 @@ export class Controller {
       });
     }
 
-    prompt.querySelector('#coach-setup-message').textContent = message + ' Configure now?';
+    prompt.querySelector('#coach-setup-message').textContent = message;
     prompt.style.display = 'block';
   }
 
