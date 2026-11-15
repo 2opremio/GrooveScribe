@@ -34,6 +34,7 @@ function roomAudioContext({ clickLevel = 0.3 } = {}) {
   const sounds = []; // what the test makes the mic hear besides the clicks: [{atMs, level}]
   let micNode = null;
   let fedUntilMs = null;
+  let lastBlock = null; // the last block handed to the mic node
   const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} });
   const node = () => ({ connect() {}, gain: param() });
   const ctx = {
@@ -75,10 +76,13 @@ function roomAudioContext({ clickLevel = 0.3 } = {}) {
         taps: sounds.map(({ atMs, level }) => ({ atMs: atMs + MIC_DELAY_MS, level })),
         seed: Math.round(fedUntilMs),
       });
-      micNode.port.onmessage({
-        data: { frame: Math.round((fedUntilMs * SAMPLE_RATE) / MS_PER_S), samples },
-      });
+      lastBlock = { frame: Math.round((fedUntilMs * SAMPLE_RATE) / MS_PER_S), samples };
+      micNode.port.onmessage({ data: lastBlock });
       fedUntilMs += lengthMs;
+    },
+    /** Hand the mic node its last block again, as Chromium sometimes does. */
+    repeatMicBlock() {
+      micNode.port.onmessage({ data: lastBlock });
     },
     /** Lose the next ms of the mic's sound, as a mic does now and then. */
     skipMic(ms) {
@@ -245,6 +249,13 @@ describe('calibrating with the mic', { timeout: 30000 }, () => {
     const midiHandler = openDialog();
     document.getElementById('calib-choose-mic').click();
     await measureWithMic(midiHandler, undefined, () => ctx.skipMic(16));
+    expect(text('calib-compare-sound')).toBe(`+${SOUND_MS} ms`);
+  });
+
+  it('ignores a block of the mic handed over twice', async () => {
+    const midiHandler = openDialog();
+    document.getElementById('calib-choose-mic').click();
+    await measureWithMic(midiHandler, () => ctx.repeatMicBlock());
     expect(text('calib-compare-sound')).toBe(`+${SOUND_MS} ms`);
   });
 

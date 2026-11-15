@@ -128,13 +128,18 @@ export class MicRecorder {
   }
 
   _add({ frame, samples }) {
+    const last = this._chunks[this._chunks.length - 1];
+    // Chromium sometimes hands the worklet one block twice; a copy of the last block adds nothing
+    if (last && frame === last.frame && sameSamples(samples, last.samples)) return;
     const skipped = this._nextFrame !== null && frame !== this._nextFrame;
     if (skipped && !this._steady) {
       this._chunks = []; // still settling in: start again from here
     } else if (skipped && !this._error) {
-      // a block the mic didn't deliver: the recording no longer lines up with the clock
+      // a block missing, or a different one at a frame already recorded: the recording no
+      // longer lines up with the clock
+      const repeated = last && frame === last.frame ? ' (a different block at the same frame)' : '';
       this._error = new Error(
-        `[MicRecorder] the mic skipped from frame ${this._nextFrame} to ${frame}`
+        `[MicRecorder] the mic skipped from frame ${this._nextFrame} to ${frame}${repeated}`
       );
     }
     this._chunks.push({ frame, samples });
@@ -146,4 +151,8 @@ export class MicRecorder {
       this._onSteady();
     }
   }
+}
+
+function sameSamples(a, b) {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
 }
