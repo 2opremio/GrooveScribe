@@ -25,6 +25,7 @@ function measure({
   clickLevel = 0.3,
   knockAfterFirstTapMs = null,
   roomNoise = undefined,
+  farStickLevel = 0,
   seed = 1,
 }) {
   const jitter = normalNoise(seed + 100);
@@ -45,6 +46,8 @@ function measure({
   const heardClicks = clickRounds.flat().map((ms) => heard(ms + outputErrorMs, clickLevel));
   const heardTaps = [
     ...soundSticksMs.map((ms) => heard(ms + soundDelayMs, drumSoundLevel)),
+    // the stick on the far pad, heard faintly ahead of its drum sound
+    ...(farStickLevel > 0 ? soundSticksMs.map((ms) => heard(ms, farStickLevel)) : []),
     ...nearSticksMs.map((ms) => heard(ms, stickLevel)),
   ];
   if (knockAfterFirstTapMs !== null) {
@@ -161,6 +164,18 @@ describe('measuring the system with a mic', () => {
     expect(fan.failure).toBeNull();
     expect(Math.abs(fan.stickMs - quiet.stickMs)).toBeLessThan(0.5);
     expect(Math.abs(fan.soundMs - quiet.soundMs)).toBeLessThan(0.5);
+  });
+
+  it('times the drum sound, not a quieter stick on the far pad just before it', () => {
+    const result = measure({
+      outputErrorMs: 10,
+      midiDelayMs: 5,
+      soundDelayMs: 6,
+      micDelayMs: 20,
+      farStickLevel: 0.2,
+    });
+    expect(result.failure).toBeNull();
+    expect(result.soundDelayMs).toBeCloseTo(6, 0);
   });
 
   it("doesn't take a drum sound found before its stick: the kit can't sound early", () => {

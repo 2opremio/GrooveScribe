@@ -30,6 +30,11 @@ export const LOUD_ENOUGH = 3;
 // at least this many times its level, so the noise can't make it start early.
 const ONSET_FRACTION = 0.25;
 const ONSET_ABOVE_NOISE = 1.5;
+// A sound's start is the start of the burst its peak is in: back from the peak to the first
+// stretch this long below the onset threshold. A quieter sound before it (a stick on a far pad,
+// ahead of the drum sound it triggers) dies out within that and isn't taken for its start, while
+// a click's own swings (0.2 ms apart at 2.5 kHz) are far shorter.
+const BURST_GAP_MS = 1;
 
 // Where a click is looked for, around when the coach thinks it is heard: the mic's delay plus
 // the output's error, at most well under the time to the next click.
@@ -205,14 +210,14 @@ function summarize(found, played) {
 export function soundStart(recording, fromMs, toMs) {
   const window = loudestIn(recording, fromMs, toMs);
   if (window === null || window.peak <= window.noise * LOUD_ENOUGH) return null;
-  const { signal, from, segmentStart, peak, noise } = window;
+  const { signal, from, segmentStart, peak, peakAt, noise } = window;
   const threshold = Math.max(peak * ONSET_FRACTION, noise * ONSET_ABOVE_NOISE);
-  for (let i = from; i < signal.length; i++) {
-    if (Math.abs(signal[i]) >= threshold) {
-      return recording.startMs + ((segmentStart + i) * MS_PER_S) / recording.sampleRate;
-    }
+  const gap = (BURST_GAP_MS * recording.sampleRate) / MS_PER_S;
+  let start = peakAt;
+  for (let i = peakAt - 1; i >= from && start - i <= gap; i--) {
+    if (Math.abs(signal[i]) >= threshold) start = i;
   }
-  throw new Error('[MicTiming] a peak was found but no sample reached its onset threshold');
+  return recording.startMs + ((segmentStart + start) * MS_PER_S) / recording.sampleRate;
 }
 
 /**
@@ -242,12 +247,19 @@ function loudestIn(recording, fromMs, toMs) {
   );
   if (signal.length <= from) return null;
   let peak = 0;
-  for (let i = from; i < signal.length; i++) peak = Math.max(peak, Math.abs(signal[i]));
+  let peakAt = from;
+  for (let i = from; i < signal.length; i++) {
+    if (Math.abs(signal[i]) > peak) {
+      peak = Math.abs(signal[i]);
+      peakAt = i;
+    }
+  }
   return {
     signal,
     from,
     segmentStart,
     peak,
+    peakAt,
     noise: noiseBefore(signal, from, recording.sampleRate),
   };
 }

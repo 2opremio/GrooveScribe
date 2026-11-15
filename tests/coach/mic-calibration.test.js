@@ -51,12 +51,22 @@ function roomAudioContext({ clickLevel = 0.3 } = {}) {
       return { contextTime: performance.now() / MS_PER_S, performanceTime: performance.now() };
     },
     createGain: node,
-    createOscillator: () => ({
-      ...node(),
-      frequency: param(),
-      start: (t) => clicks.push(t),
-      stop() {},
-    }),
+    createOscillator: () => {
+      let startS = null;
+      return {
+        ...node(),
+        frequency: param(),
+        start: (t) => {
+          startS = t;
+          clicks.push(t);
+        },
+        // stopped before it starts (no time given: now), it never sounds
+        stop: (t) => {
+          const stopS = t ?? performance.now() / MS_PER_S;
+          if (startS !== null && stopS <= startS) clicks.splice(clicks.indexOf(startS), 1);
+        },
+      };
+    },
     audioWorklet: { addModule: async () => {} },
     createMediaStreamSource: () => ({ connect() {}, disconnect() {} }),
     /** Hand the mic node everything the mic heard up to now. */
