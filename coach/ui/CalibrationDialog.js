@@ -3,10 +3,17 @@ import { AudioClock } from '../engine/AudioClock.js';
 
 const CALIBRATION_BPM = 80;
 const BEAT_INTERVAL_MS = 60000 / CALIBRATION_BPM; // 750ms
-// 32 counted taps: with a typical human tap spread of 15-20 ms, the median is then good to
-// about +/-3 ms. The warm-up covers locking onto the click, which takes most people a few taps.
-const TOTAL_TAPS = 40;
-const WARMUP_TAPS = 8;
+// A run is 40 beats, the first 8 a warm-up for locking onto the click, which takes most people
+// a few beats. In quarter notes that leaves 32 counted taps: with a typical tap spread of 15-20 ms
+// the median is then good to about +/-3 ms; 16th notes give four times the taps.
+const RUN_BEATS = 40;
+const WARMUP_BEATS = 8;
+// the notes the click plays (and the player with it) per beat, by coachState.calibrationRhythm
+const NOTES_PER_BEAT = { quarters: 1, sixteenths: 4 };
+// how loud a click between beats is, against one on the beat, so 16th notes keep their pulse
+const OFF_BEAT_CLICK_GAIN = 0.5;
+// clicks beyond the last counted tap, so a slightly late final tap still has a click to land on
+const TRAILING_CLICKS = 2;
 const COUNTDOWN_BEATS = 4;
 // Well above a snare's body (roughly 150-400 Hz plus a noise band), so the click doesn't
 // blur into the drum being hit on it.
@@ -37,7 +44,11 @@ export class CalibrationDialog {
     this._audioCtx = null;
     this._active = false;
     this._tapErrors = []; // signed error of each tapped beat, in beat order (including warmup)
-    this._tapCount = 0; // beats that have a tap
+    this._tapCount = 0; // clicks that have a tap
+    // the run's rhythm, set when it starts: clicks per beat, and the taps a run takes
+    this._notesPerBeat = NOTES_PER_BEAT.quarters;
+    this._totalTaps = RUN_BEATS;
+    this._warmupTaps = WARMUP_BEATS;
     // the counted taps, as {beat, error, velocity, dot}, keyed per coachState.calibrationHitRule
     this._taps = new Map();
     this._resultMs = null; // calibration offset from the last completed run
@@ -61,8 +72,8 @@ export class CalibrationDialog {
             <h2>Latency Calibration</h2>
 
             <div id="calib-instructions">
-                <p>Hit any drum pad or press any key in time with the metronome click.</p>
-                <p class="calib-subtle">Start on the very first click. The first ${WARMUP_TAPS} taps are warm-up and won't count, so use them to lock in.</p>
+                <p id="calib-what-to-play"></p>
+                <p class="calib-subtle" id="calib-warmup"></p>
                 <p class="calib-subtle" id="calib-hit-rule"></p>
             </div>
 
@@ -110,6 +121,13 @@ export class CalibrationDialog {
   }
 
   show() {
+    const sixteenths = coachState.calibrationRhythm === 'sixteenths';
+    this.container.querySelector('#calib-what-to-play').textContent = sixteenths
+      ? 'Play 16th notes on any drum pad with the metronome click, alternating hands.'
+      : 'Hit any drum pad or press any key in time with the metronome click.';
+    this.container.querySelector('#calib-warmup').textContent =
+      `Start on the very first click. The first ${WARMUP_BEATS} beats are warm-up and ` +
+      "won't count, so use them to lock in.";
     const rules = [
       coachState.calibrationHitRule === 'loudest'
         ? 'Only the loudest hit near each click counts.'
@@ -157,6 +175,9 @@ export class CalibrationDialog {
   // -- Countdown --
 
   _startCountdown() {
+    this._notesPerBeat = NOTES_PER_BEAT[coachState.calibrationRhythm];
+    this._totalTaps = RUN_BEATS * this._notesPerBeat;
+    this._warmupTaps = WARMUP_BEATS * this._notesPerBeat;
     this._ensureAudioContext();
     this._showPhase('countdown');
     this._countdownLeft = COUNTDOWN_BEATS;
@@ -221,12 +242,12 @@ export class CalibrationDialog {
   _scheduleBeatClicks() {
     const audioNow = this._audioCtx.currentTime;
 
-    // a couple of clicks beyond the last counted tap, so a slightly late final tap still
-    // has a click to land on; _stopPendingClicks silences them once tapping ends
-    const totalBeats = TOTAL_TAPS + 2;
-    for (let i = 0; i < totalBeats; i++) {
-      const audioTime = audioNow + (i * BEAT_INTERVAL_MS) / 1000;
-      this._pendingClicks.push(this._scheduleClickAt(audioTime));
+    // _stopPendingClicks silences the trailing clicks once tapping ends
+    const noteIntervalS = this._noteIntervalMs() / 1000;
+    for (let i = 0; i < this._totalTaps + TRAILING_CLICKS; i++) {
+      const audioTime = audioNow + i * noteIntervalS;
+      const onBeat = i % this._notesPerBeat === 0;
+      this._pendingClicks.push(this._scheduleClickAt(audioTime, onBeat ? 1 : OFF_BEAT_CLICK_GAIN));
       this._beatAudioTimes.push(audioTime);
     }
   }
@@ -260,14 +281,14 @@ export class CalibrationDialog {
     const key = coachState.calibrationHitRule === 'loudest' ? beat : `hit${this._tapCount}`;
     const existing = this._taps.get(key);
     // all taps are in: only a louder hit replacing one of them still counts
-    if (!existing && this._tapCount >= TOTAL_TAPS) return;
+    if (!existing && this._tapCount >= this._totalTaps) return;
     if (existing) {
       if (velocity <= existing.velocity) return;
       existing.error = error;
       existing.velocity = velocity;
       this._placeDot(existing.dot, error);
     } else {
-      const dot = this._addDot(this._tapCount < WARMUP_TAPS);
+      const dot = this._addDot(this._tapCount < this._warmupTaps);
       this._placeDot(dot, error);
       this._taps.set(key, { beat, error, velocity, dot });
       this._flashBeatIndicator();
@@ -277,13 +298,13 @@ export class CalibrationDialog {
     this._tapErrors = [...this._taps.values()].map((tap) => tap.error);
     this._updateDisplay();
 
-    if (!existing && this._tapCount === TOTAL_TAPS) {
+    if (!existing && this._tapCount === this._totalTaps) {
       if (coachState.calibrationHitRule !== 'loudest') {
         this._finishTapping();
         return;
       }
       // a louder hit can still replace this click's tap until the next click is nearer
-      const beatWindowEnd = heardTimes[beat] + BEAT_INTERVAL_MS / 2;
+      const beatWindowEnd = heardTimes[beat] + this._noteIntervalMs() / 2;
       setTimeout(() => this._finishTapping(), Math.max(0, beatWindowEnd - performance.now()));
     }
   }
@@ -312,17 +333,17 @@ export class CalibrationDialog {
 
   _updateDisplay() {
     const counter = this.container.querySelector('#calib-beat-counter');
-    counter.textContent = `${this._tapCount} / ${TOTAL_TAPS}`;
+    counter.textContent = `${this._tapCount} / ${this._totalTaps}`;
 
     // Running offset (median of non-warmup taps)
     const offsetEl = this.container.querySelector('#calib-running-offset');
-    const usableTaps = this._tapErrors.slice(WARMUP_TAPS);
+    const usableTaps = this._tapErrors.slice(this._warmupTaps);
     if (usableTaps.length > 0) {
       const median = this._computeMedian(usableTaps);
       const sign = median >= 0 ? '+' : '';
       offsetEl.textContent = `${sign}${median.toFixed(1)} ms`;
     } else if (this._tapCount > 0) {
-      offsetEl.textContent = `warming up... (${WARMUP_TAPS - this._tapCount} left)`;
+      offsetEl.textContent = `warming up... (${this._warmupTaps - this._tapCount} left)`;
     } else {
       offsetEl.textContent = '';
     }
@@ -335,7 +356,7 @@ export class CalibrationDialog {
     this._stopPendingClicks();
     this._restoreMidiHandler();
 
-    const countedTaps = this._tapErrors.slice(WARMUP_TAPS);
+    const countedTaps = this._tapErrors.slice(this._warmupTaps);
     const usableTaps = withoutSlips(countedTaps);
     const slips = countedTaps.length - usableTaps.length;
     this._resultMs = Math.round(this._computeMedian(usableTaps));
@@ -404,7 +425,16 @@ export class CalibrationDialog {
     this._scheduleClickAt(this._audioCtx.currentTime);
   }
 
-  _scheduleClickAt(audioTime) {
+  /** The time between clicks while tapping, in ms. */
+  _noteIntervalMs() {
+    return BEAT_INTERVAL_MS / this._notesPerBeat;
+  }
+
+  /**
+   * @param {number} audioTime - when the click plays, on the audio clock, in s
+   * @param {number} [relativeGain] - its loudness against a click on the beat
+   */
+  _scheduleClickAt(audioTime, relativeGain = 1) {
     const ctx = this._audioCtx;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -412,7 +442,7 @@ export class CalibrationDialog {
     gain.connect(ctx.destination);
     osc.frequency.value = CLICK_FREQ_HZ;
     osc.type = 'sine';
-    const clickGain = CLICK_MAX_GAIN * (coachState.metronomeVolume / 100);
+    const clickGain = CLICK_MAX_GAIN * relativeGain * (coachState.metronomeVolume / 100);
     gain.gain.setValueAtTime(clickGain, audioTime);
     gain.gain.exponentialRampToValueAtTime(0.001, audioTime + CLICK_DURATION_S);
     osc.start(audioTime);
