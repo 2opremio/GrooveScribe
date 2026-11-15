@@ -3,6 +3,11 @@ const WORKLET_URL = new URL('./micCapture.worklet.js', import.meta.url);
 const PROCESSOR_NAME = 'mic-capture';
 // contexts the capture processor is registered on: registering it twice on one fails
 const contextsWithWorklet = new WeakSet();
+// A just-opened mic may skip a few blocks while it settles in. Recording counts from the first
+// stretch this long without a skip; a skip after that breaks the recording.
+const STEADY_INPUT_MS = 300;
+// how long a mic may take to settle in before it counts as not working
+const STEADY_TIMEOUT_MS = 3000;
 
 /**
  * The mic DrumOS names, or '' when the page doesn't run in DrumOS or DrumOS has no mic.
@@ -52,12 +57,17 @@ export class MicRecorder {
     this._chunks = [];
     this._nextFrame = null; // the frame the next block must start at
     this._error = null;
+    this._steady = false; // whether the mic has delivered without a skip for STEADY_INPUT_MS
+    this._onSteady = null; // resolves start() once it has
     this._source = null;
     this._node = null;
     this._stream = null;
   }
 
-  /** @param {MediaStream} stream - from openMic; stopped by stop() */
+  /**
+   * Start recording, once the mic delivers steadily.
+   * @param {MediaStream} stream - from openMic; stopped by stop()
+   */
   async start(stream) {
     const ctx = this.audioContext;
     if (!contextsWithWorklet.has(ctx)) {
@@ -70,6 +80,15 @@ export class MicRecorder {
     this._node = new AudioWorkletNode(ctx, PROCESSOR_NAME, { numberOfOutputs: 0 });
     this._node.port.onmessage = (e) => this._add(e.data);
     this._source.connect(this._node);
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error(`[MicRecorder] the mic gave no steady sound in ${STEADY_TIMEOUT_MS} ms`));
+      }, STEADY_TIMEOUT_MS);
+      this._onSteady = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+    });
   }
 
   stop() {
@@ -109,7 +128,10 @@ export class MicRecorder {
   }
 
   _add({ frame, samples }) {
-    if (this._nextFrame !== null && frame !== this._nextFrame && !this._error) {
+    const skipped = this._nextFrame !== null && frame !== this._nextFrame;
+    if (skipped && !this._steady) {
+      this._chunks = []; // still settling in: start again from here
+    } else if (skipped && !this._error) {
       // a block the mic didn't deliver: the recording no longer lines up with the clock
       this._error = new Error(
         `[MicRecorder] the mic skipped from frame ${this._nextFrame} to ${frame}`
@@ -117,5 +139,11 @@ export class MicRecorder {
     }
     this._chunks.push({ frame, samples });
     this._nextFrame = frame + samples.length;
+    const recordedMs =
+      ((this._nextFrame - this._chunks[0].frame) * MS_PER_S) / this.audioContext.sampleRate;
+    if (!this._steady && recordedMs >= STEADY_INPUT_MS) {
+      this._steady = true;
+      this._onSteady();
+    }
   }
 }

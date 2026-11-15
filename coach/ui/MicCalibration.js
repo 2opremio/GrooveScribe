@@ -215,8 +215,21 @@ export class MicCalibration {
     this._render();
   }
 
-  /** Mark the sounds the recording now covers as heard or not, and move on when a round ends. */
+  /** Check the recording, and stop with a message if it broke. */
   _check() {
+    try {
+      this._listen();
+    } catch (error) {
+      console.error('[MicCalibration] the recording broke:', error);
+      this._fail(
+        'The mic stopped sending sound partway through.',
+        'Check its USB cable and try again.'
+      );
+    }
+  }
+
+  /** Mark the sounds the recording now covers as heard or not, and move on when a round ends. */
+  _listen() {
     const until = this._recorder.recordedUntilMs;
     if (until === null) return;
     const listen = (item, beforeMs, afterMs) => {

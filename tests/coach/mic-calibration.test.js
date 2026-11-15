@@ -73,6 +73,10 @@ function roomAudioContext({ clickLevel = 0.3 } = {}) {
       });
       fedUntilMs += lengthMs;
     },
+    /** Lose the next ms of the mic's sound, as a mic does now and then. */
+    skipMic(ms) {
+      fedUntilMs += ms;
+    },
   };
   globalThis.AudioWorkletNode = function () {
     micNode = { port: { onmessage: null } };
@@ -140,15 +144,25 @@ describe('calibrating with the mic', () => {
   /**
    * Go through the mic's steps as asked, until it hands over to something else.
    * @param {() => void} [duringFirstClick] - done once, partway into the first click round
+   * @param {() => void} [afterFirstSound] - done once, after the mic's first sound
    */
-  async function measureWithMic(midiHandler, duringFirstClick = () => {}) {
+  async function measureWithMic(
+    midiHandler,
+    duringFirstClick = () => {},
+    afterFirstSound = () => {}
+  ) {
     document.getElementById('calib-start-btn').click();
     const titles = new Set();
     let nextTapMs = 0;
     let clicked = false;
+    let sounded = false;
     while (shown('calib-mic') && performance.now() < MAX_MS) {
       await vi.advanceTimersByTimeAsync(BLOCK_MS);
       ctx.feedMic();
+      if (!sounded) {
+        afterFirstSound();
+        sounded = true;
+      }
       const title = text('calib-mic-title');
       titles.add(title);
       if (title === 'Listening to the click' && !clicked && ctx.clicks.length > 0) {
@@ -189,6 +203,21 @@ describe('calibrating with the mic', () => {
     document.getElementById('calib-choose-mic').click();
     await measureWithMic(midiHandler, () => hit(midiHandler));
     expect(text('calib-result-value')).toBe(`+${SYSTEM_MS} ms`);
+  });
+
+  it('waits for a just-opened mic to settle in before measuring', async () => {
+    const midiHandler = openDialog();
+    document.getElementById('calib-choose-mic').click();
+    await measureWithMic(midiHandler, undefined, () => ctx.skipMic(16));
+    expect(text('calib-result-value')).toBe(`+${SYSTEM_MS} ms`);
+  });
+
+  it('says so when the mic drops out partway, instead of measuring across the gap', async () => {
+    const midiHandler = openDialog();
+    document.getElementById('calib-choose-mic').click();
+    await measureWithMic(midiHandler, () => ctx.skipMic(16));
+    expect(text('calib-result-value')).toBe('No result');
+    expect(text('calib-result-explanation')).toContain('stopped sending sound');
   });
 
   it("stops after the first click round when the mic can't hear the click", async () => {
