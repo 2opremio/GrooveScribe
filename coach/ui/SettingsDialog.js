@@ -85,7 +85,13 @@ export class SettingsDialog {
               <button type="button" class="coach-settings-btn" id="coach-calibrate-btn"></button>
             </div>
             <div class="coach-settings-advanced">
-              ${row('Latency by hand', 'calibrating sets it', number('coach-latency-input', 'ms', 'step="1"'), 'coach-latency-input')}
+              ${row(
+                'Use',
+                'the latest result of each way of calibrating',
+                '<select id="coach-calib-use-select"></select>',
+                'coach-calib-use-select'
+              )}
+              ${row('Latency', 'type a number to set it by hand', number('coach-latency-input', 'ms', 'step="1"'), 'coach-latency-input')}
               ${row(
                 'Listens to',
                 'which hit near each click is the tap',
@@ -129,6 +135,14 @@ export class SettingsDialog {
 
     q('#coach-auto-bpm-check').addEventListener('change', () => this._showAutoBpm());
     q('#coach-show-advanced-check').addEventListener('change', () => this._showAdvanced());
+    // choosing a calibration shows its latency; typing one makes it a latency set by hand
+    q('#coach-calib-use-select').addEventListener('change', (e) => {
+      const latest = latestCalibration(e.target.value);
+      if (latest) q('#coach-latency-input').value = latest.offsetMs;
+    });
+    q('#coach-latency-input').addEventListener('input', () => {
+      q('#coach-calib-use-select').value = 'hand';
+    });
 
     q('#coach-calibrate-btn').addEventListener('click', () => {
       this.save();
@@ -161,6 +175,7 @@ export class SettingsDialog {
     q('#coach-reps-input').value = coachState.reps;
     q('#coach-countin-check').checked = coachState.countIn;
     q('#coach-latency-input').value = coachState.calibrationOffset;
+    this._showCalibrationChoices();
     q('#coach-calib-hit-rule-select').value = coachState.calibrationHitRule;
     q('#coach-min-velocity-input').value = coachState.minHitVelocity;
     q('#coach-debug-grid-check').checked = coachState.showDebugGrid;
@@ -183,6 +198,27 @@ export class SettingsDialog {
     this.container.style.display = 'block';
   }
 
+  /** The calibrations to choose from: the latest of each way that has a result, and by hand. */
+  _showCalibrationChoices() {
+    const select = this.container.querySelector('#coach-calib-use-select');
+    const options = MEASURED_METHODS.map((method) => [method, latestCalibration(method)])
+      .filter(([, latest]) => latest)
+      .map(([method, latest]) => {
+        const day = new Date(latest.at).toLocaleDateString(undefined, {
+          day: 'numeric',
+          month: 'short',
+        });
+        const label = `${CALIBRATION_METHOD_NAMES[method]}: ${signedMs(latest.offsetMs)} ms (${day})`;
+        return `<option value="${method}">${label}</option>`;
+      });
+    options.push('<option value="hand">By hand</option>');
+    select.innerHTML = options.join('');
+    // the calibration in use, unless it has changed since (or was never one of these)
+    const inUse = latestCalibration(coachState.calibrationMethod);
+    select.value =
+      inUse?.offsetMs === coachState.calibrationOffset ? coachState.calibrationMethod : 'hand';
+  }
+
   /** Mapping and calibration: what each is now, and the button that sets it up or redoes it. */
   _showKitStatus() {
     const q = (sel) => this.container.querySelector(sel);
@@ -198,7 +234,7 @@ export class SettingsDialog {
       q('#coach-calib-status'),
       calibrated,
       `<i class="fa fa-check"></i> ${signedMs(coachState.calibrationOffset)} ms, ` +
-        CALIBRATION_METHOD_NAMES[coachState.calibrationMethod ?? 'unknown'],
+        CALIBRATION_STATUS[coachState.calibrationMethod ?? 'unknown'],
       'not calibrated'
     );
     const calibBtn = q('#coach-calibrate-btn');
@@ -245,7 +281,11 @@ export class SettingsDialog {
     coachState.reps = parseInt(q('#coach-reps-input').value);
     coachState.countIn = q('#coach-countin-check').checked;
     const latencyMs = parseInt(q('#coach-latency-input').value) || 0;
-    if (latencyMs !== coachState.calibrationOffset) coachState.calibrationMethod = 'hand';
+    const method = q('#coach-calib-use-select').value;
+    // an old calibration of unknown method stays as it was until something is changed
+    if (latencyMs !== coachState.calibrationOffset || method !== 'hand') {
+      coachState.calibrationMethod = method;
+    }
     coachState.calibrationOffset = latencyMs;
     coachState.calibrationHitRule = q('#coach-calib-hit-rule-select').value;
     coachState.minHitVelocity = q('#coach-min-velocity-input').value;
@@ -320,12 +360,20 @@ function signedMs(ms) {
 }
 
 // how the status line says the calibration was set, by calibrationMethod
-const CALIBRATION_METHOD_NAMES = {
+const CALIBRATION_STATUS = {
   mic: 'measured with the mic',
   playAlong: 'by playing along',
   hand: 'set by hand',
   unknown: 'calibrated',
 };
+// the ways of calibrating that measure, and their names in the choice of which to use
+const MEASURED_METHODS = ['playAlong', 'mic'];
+const CALIBRATION_METHOD_NAMES = { playAlong: 'Play along', mic: 'Mic' };
+
+/** The latest result of one way of calibrating, or undefined if it has none. */
+function latestCalibration(method) {
+  return coachState.calibrationHistory.findLast((entry) => entry.method === method);
+}
 
 function status(el, ok, okHtml, missingText) {
   el.className = ok ? 'coach-settings-ok' : 'coach-settings-missing';

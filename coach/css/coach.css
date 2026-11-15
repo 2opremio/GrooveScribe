@@ -270,6 +270,11 @@
   font: inherit;
 }
 
+/* names a calibration with its result and date */
+#coachSettingsDialog #coach-calib-use-select {
+  width: 245px;
+}
+
 /* the app draws range inputs as a thick gray bar with a gray knob: a thin track and a blue
    knob here, like the other controls */
 #coachSettingsDialog input[type='range'] {
