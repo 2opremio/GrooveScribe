@@ -41,7 +41,9 @@ export class CalibrationDialog {
     // the counted taps, as {beat, error, velocity, dot}, keyed per coachState.calibrationHitRule
     this._taps = new Map();
     this._resultMs = null; // calibration offset from the last completed run
-    this._beatTimes = []; // when each click is heard, in the performance.now() domain
+    // when each click plays on the audio clock, in s; converted to when it is heard at each tap,
+    // so a shift in the output's timing during the run is followed
+    this._beatAudioTimes = [];
     this._schedulerTimer = null;
     this._pendingClicks = []; // oscillators scheduled for the tapping phase, stopped when it ends
     this._countdownLeft = 0;
@@ -185,7 +187,7 @@ export class CalibrationDialog {
     this._tapErrors = [];
     this._tapCount = 0;
     this._taps = new Map();
-    this._beatTimes = [];
+    this._beatAudioTimes = [];
 
     // Clear any existing dots from a previous run
     const strip = this.container.querySelector('#calib-timing-strip');
@@ -225,7 +227,7 @@ export class CalibrationDialog {
     for (let i = 0; i < totalBeats; i++) {
       const audioTime = audioNow + (i * BEAT_INTERVAL_MS) / 1000;
       this._pendingClicks.push(this._scheduleClickAt(audioTime));
-      this._beatTimes.push(this._clock.heardAt(audioTime));
+      this._beatAudioTimes.push(audioTime);
     }
   }
 
@@ -245,12 +247,13 @@ export class CalibrationDialog {
 
     // Click times are when each click is heard, as sessions grade against when each note is
     // heard, so the calibration offset is whatever remains after the browser's output delay.
+    const heardTimes = this._beatAudioTimes.map((t) => this._clock.heardAt(t));
     let beat = 0;
-    for (let i = 1; i < this._beatTimes.length; i++) {
-      const dist = (b) => Math.abs(timestamp - this._beatTimes[b]);
+    for (let i = 1; i < heardTimes.length; i++) {
+      const dist = (b) => Math.abs(timestamp - heardTimes[b]);
       if (dist(i) < dist(beat)) beat = i;
     }
-    const error = timestamp - this._beatTimes[beat];
+    const error = timestamp - heardTimes[beat];
 
     // 'loudest' keys taps by their click, so a louder hit replaces a softer one on the same
     // click; 'every' gives each hit its own key
@@ -280,7 +283,7 @@ export class CalibrationDialog {
         return;
       }
       // a louder hit can still replace this click's tap until the next click is nearer
-      const beatWindowEnd = this._beatTimes[beat] + BEAT_INTERVAL_MS / 2;
+      const beatWindowEnd = heardTimes[beat] + BEAT_INTERVAL_MS / 2;
       setTimeout(() => this._finishTapping(), Math.max(0, beatWindowEnd - performance.now()));
     }
   }
@@ -445,7 +448,7 @@ export class CalibrationDialog {
     this._tapErrors = [];
     this._tapCount = 0;
     this._taps = new Map();
-    this._beatTimes = [];
+    this._beatAudioTimes = [];
 
     // Clear timing strip dots
     if (this.container) {
